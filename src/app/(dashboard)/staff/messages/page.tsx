@@ -171,7 +171,8 @@ export default function StaffMessagesPage() {
     // API responses are not guaranteed to arrive in newest-first order.
     const newestFirst = [...conversations].sort((a, b) => {
       const activityTime = (item: Conversation) => {
-        const raw = item.lastMessageAt || (item as any).lastMessage?.createdAt || item.updatedAt || item.createdAt;
+        const raw = item.lastMessageAt || (item as any).lastMessage?.sentAt || (item as any).lastMessage?.createdAt;
+        // Do not fall back to conversation creation/update time: those are not chat activity.
         const time = raw ? new Date(raw).getTime() : 0;
         return Number.isFinite(time) ? time : 0;
       };
@@ -200,8 +201,37 @@ export default function StaffMessagesPage() {
 
     try {
       const result = await communicationService.getInbox();
+      const inboxItems = result.items || [];
 
-      setConversations(result.items || []);
+      // Resolve the actual newest message for every conversation before rendering
+      // the list. The inbox response may not include lastMessageAt for older chats,
+      // so sorting only the initial response can put an active chat too far down.
+      const hydratedItems = await Promise.all(inboxItems.map(async (item) => {
+        try {
+          const response = await communicationService.getMessages(item._id, 1, 50);
+          const messages = Array.isArray(response?.items) ? response.items : [];
+          const latestMessage = [...messages].sort((a, b) => {
+            const timestamp = (message: typeof a) => {
+              const raw = message.createdAt || (message as any).sentAt;
+              const value = raw ? new Date(raw).getTime() : 0;
+              return Number.isFinite(value) ? value : 0;
+            };
+            return timestamp(b) - timestamp(a);
+          })[0];
+          if (!latestMessage) return item;
+          const rawTimestamp = latestMessage.createdAt || (latestMessage as any).sentAt;
+          return {
+            ...item,
+            lastMessageAt: rawTimestamp || item.lastMessageAt,
+            lastMessagePreview: item.lastMessagePreview || latestMessage.body || '',
+          };
+        } catch {
+          // Keep the inbox usable if one conversation's history cannot be fetched.
+          return item;
+        }
+      }));
+
+      setConversations(hydratedItems);
 
       // Keep the conversation pane empty until the user chooses a chat.
       // Deep links with ?conversation=... are still opened by the URL effect below.

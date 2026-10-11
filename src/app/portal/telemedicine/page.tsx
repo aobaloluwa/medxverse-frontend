@@ -136,7 +136,8 @@ export default function TelemedicinePage() {
         createdAt?: string;
         lastMessage?: { sentAt?: string; createdAt?: string };
       };
-      const raw = record.lastMessageAt || record.lastMessage?.sentAt || record.lastMessage?.createdAt || record.updatedAt || record.createdAt || session.actualStartTime || session.scheduledStartTime;
+      const raw = record.lastMessageAt || record.lastMessage?.sentAt || record.lastMessage?.createdAt;
+      // Sort by the last chat message only, never by booking, session, or update dates.
       const time = raw ? new Date(raw).getTime() : 0;
       return Number.isFinite(time) ? time : 0;
     };
@@ -163,7 +164,27 @@ export default function TelemedicinePage() {
       ]);
       setPatients(directory.patients || []);
       setDoctors(directory.doctors || []);
-      const items = sessionResult.sessions || [];
+      const sessionItems = sessionResult.sessions || [];
+
+      // Resolve each session's latest message before the consultation list is shown.
+      // Do not wait for the user to open a session to learn its real chat timestamp.
+      const items = await Promise.all(sessionItems.map(async (session) => {
+        try {
+          const history = await telemedicineService.getMessages(session._id);
+          const latestMessage = [...(history || [])].sort((a, b) => {
+            const timestamp = (message: TelemedicineMessage) => {
+              const raw = message.sentAt || (message as any).createdAt;
+              const value = raw ? new Date(raw).getTime() : 0;
+              return Number.isFinite(value) ? value : 0;
+            };
+            return timestamp(b) - timestamp(a);
+          })[0];
+          if (!latestMessage) return session;
+          return { ...session, lastMessageAt: latestMessage.sentAt || (latestMessage as any).createdAt || (session as any).lastMessageAt } as TelemedicineSession;
+        } catch {
+          return session;
+        }
+      }));
       setSessions(items);
       const requestedSessionId = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('sessionId')

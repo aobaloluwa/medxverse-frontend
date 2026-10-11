@@ -140,6 +140,7 @@ export default function StaffPatientConsultationsPage() {
   const [newMessageCount, setNewMessageCount] = useState(0);
 
   const [sessions, setSessions] = useState<Consultation[]>([]);
+  const sessionsRef = useRef<Consultation[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [messages, setMessages] = useState<ConsultationMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -173,8 +174,44 @@ export default function StaffPatientConsultationsPage() {
         params: { page: 1, limit: 50 },
       });
       const payload = unwrap<any>(response, {});
-      const result = Array.isArray(payload?.sessions) ? payload.sessions : Array.isArray(payload) ? payload : [];
-      setSessions(result);
+      const result: Consultation[] = Array.isArray(payload?.sessions) ? payload.sessions : Array.isArray(payload) ? payload : [];
+
+      // Fetch each consultation's latest chat activity during the initial list load.
+      // This prevents the list from changing order only after a chat is opened.
+      const hydratedSessions = showSpinner ? await Promise.all(result.map(async (session) => {
+        try {
+          const messageResponse = await apiClient.get(`/telemedicine/messages/session/${encodeURIComponent(session._id)}`);
+          const messagePayload = unwrap<any>(messageResponse, []);
+          const items: ConsultationMessage[] = Array.isArray(messagePayload)
+            ? messagePayload
+            : Array.isArray(messagePayload?.messages)
+              ? messagePayload.messages
+              : Array.isArray(messagePayload?.items)
+                ? messagePayload.items
+                : [];
+          const latestMessage = [...items].sort((a, b) => {
+            const timestamp = (message: ConsultationMessage) => {
+              const raw = message.sentAt || (message as any).createdAt;
+              const value = raw ? new Date(raw).getTime() : 0;
+              return Number.isFinite(value) ? value : 0;
+            };
+            return timestamp(b) - timestamp(a);
+          })[0];
+          if (!latestMessage) return session;
+          return { ...session, lastMessageAt: latestMessage.sentAt || (latestMessage as any).createdAt || session.lastMessageAt };
+        } catch {
+          return session;
+        }
+      })) : result.map((session) => {
+        // Keep the timestamps hydrated on first load when the periodic session
+        // refresh does not include chat activity metadata.
+        const previous = sessionsRef.current.find((item) => item._id === session._id);
+        return session.lastMessageAt || !previous?.lastMessageAt
+          ? session
+          : { ...session, lastMessageAt: previous.lastMessageAt };
+      });
+      sessionsRef.current = hydratedSessions;
+      setSessions(hydratedSessions);
       // Do not auto-open the first consultation; let the user choose one.
       setError('');
     } catch (cause: any) {
@@ -209,9 +246,11 @@ export default function StaffPatientConsultationsPage() {
         return timeOf(b) - timeOf(a);
       })[0] as ConsultationMessage | undefined;
       if (latestMessage) {
-        setSessions((current) => current.map((item) => item._id === sessionId
-          ? { ...item, lastMessageAt: latestMessage.sentAt || (latestMessage as any).createdAt || item.lastMessageAt }
-          : item));
+        const latestTimestamp = latestMessage.sentAt || (latestMessage as any).createdAt;
+        sessionsRef.current = sessionsRef.current.map((item) => item._id === sessionId
+          ? { ...item, lastMessageAt: latestTimestamp || item.lastMessageAt }
+          : item);
+        setSessions(sessionsRef.current);
       }
       setMessages((current) => {
         const pending = current.filter(
@@ -280,7 +319,9 @@ export default function StaffPatientConsultationsPage() {
   const filteredSessions = useMemo(() => {
     const newestFirst = [...sessions].sort((a, b) => {
       const activityTime = (session: Consultation) => {
-        const raw = session.lastMessageAt || session.lastMessage?.sentAt || session.lastMessage?.createdAt || session.updatedAt || session.createdAt || session.scheduledStartTime;
+        const raw = session.lastMessageAt || session.lastMessage?.sentAt || session.lastMessage?.createdAt;
+        // Consultations without chat messages sort below conversations with messages;
+        // booking/scheduling timestamps must never determine chat-list order.
         const time = raw ? new Date(raw).getTime() : 0;
         return Number.isFinite(time) ? time : 0;
       };
