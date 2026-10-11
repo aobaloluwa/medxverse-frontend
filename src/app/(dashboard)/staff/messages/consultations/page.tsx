@@ -297,7 +297,7 @@ export default function StaffPatientConsultationsPage() {
     requestAnimationFrame(() => {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     });
-  }, [messages]);
+  }, [messages, prescriptions]);
 
   useEffect(() => {
     const previousIds = previousMessageIdsRef.current;
@@ -892,7 +892,67 @@ export default function StaffPatientConsultationsPage() {
                   </div>
                 ) : (messages.length > 0 || prescriptions.length > 0) ? (
                   <div className="mx-auto max-w-3xl space-y-3">
-                    {messages.map((message) => {
+                    {[
+                        ...messages.map((message) => ({
+                          kind: 'message' as const,
+                          timestamp: new Date(message.sentAt || 0).getTime() || 0,
+                          message,
+                        })),
+                        ...prescriptions.map((prescription: any) => ({
+                          kind: 'prescription' as const,
+                          timestamp: new Date(prescription.dateIssued || prescription.createdAt || 0).getTime() || 0,
+                          prescription,
+                        })),
+                      ].sort((a, b) => a.timestamp - b.timestamp).map((timelineItem) => {
+                        if (timelineItem.kind === 'prescription') {
+                          const prescription = timelineItem.prescription;
+                          const prescriptionKey = String(prescription._id || prescription.verificationId || timelineItem.timestamp);
+                          const isExpanded = String(viewingPrescription?._id || viewingPrescription?.verificationId || '') === prescriptionKey;
+                          return (
+                            <div key={`prescription-${prescriptionKey}`} className="flex justify-center py-1">
+                              <article className="w-full max-w-[95%] overflow-hidden rounded-2xl border border-[#cde7e1] bg-white shadow-sm">
+                                <div className="flex items-start gap-3 p-3 sm:p-4">
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]"><Pill className="h-5 w-5" /></div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#1b7b68]">Prescription issued</p>
+                                    <p className="mt-0.5 break-words text-sm font-bold text-slate-800">{prescription.diagnosis || 'Prescription details'}</p>
+                                    <p className="mt-1 text-[10px] text-slate-500">{prescription.prescriberName || 'Care team'} · {prescription.dateIssued ? formatDate(prescription.dateIssued) : 'Date not provided'}</p>
+                                    <p className="mt-1 text-[10px] text-slate-500">{(prescription.medications || []).length} medication{(prescription.medications || []).length === 1 ? '' : 's'} · {String(prescription.status || 'ISSUED').replace(/_/g, ' ')}</p>
+                                  </div>
+                                  <button type="button" onClick={() => setViewingPrescription(isExpanded ? null : prescription)} aria-expanded={isExpanded} className="shrink-0 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2 text-[10px] font-bold text-[#1b7b68] hover:bg-[#e5f5ef]">{isExpanded ? 'Hide details' : 'View details'}</button>
+                                </div>
+                                {isExpanded && (
+                                  <div className="space-y-3 border-t border-[#e3f1ed] bg-[#fbfefd] p-3 sm:p-4">
+                                    <div>
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Medication details</p>
+                                      {(prescription.medications || []).length ? (
+                                        <div className="mt-2 space-y-2">
+                                          {prescription.medications.map((medication: any, index: number) => (
+                                            <div key={index} className="rounded-xl border border-slate-200 bg-white p-3">
+                                              <p className="text-xs font-bold text-slate-800">{index + 1}. {medication.genericName || 'Medication'}{medication.strengthForm ? ` · ${medication.strengthForm}` : ''}</p>
+                                              <div className="mt-2 grid grid-cols-1 gap-1.5 text-[11px] text-slate-600 sm:grid-cols-2">
+                                                <p><span className="font-semibold">Dose / frequency:</span> {medication.dosageFrequency || 'Not specified'}</p>
+                                                <p><span className="font-semibold">Duration:</span> {medication.duration || 'Not specified'}</p>
+                                                <p><span className="font-semibold">Quantity:</span> {medication.quantity || 'Not specified'}</p>
+                                                <p><span className="font-semibold">Route:</span> {medication.route || 'Not specified'}</p>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : <p className="mt-1 text-xs text-slate-500">Medication details are not available.</p>}
+                                    </div>
+                                    {prescription.clinicalNotes && <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Clinical notes</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{prescription.clinicalNotes}</p></div>}
+                                    {prescription.patientInstructions && <div className="rounded-xl border border-[#cde7e1] bg-white p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]">Patient instructions</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{prescription.patientInstructions}</p></div>}
+                                    {prescription.pharmacistInstructions && <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pharmacist instructions</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{prescription.pharmacistInstructions}</p></div>}
+                                    {prescription.verificationId && <p className="break-all text-[10px] text-slate-400">Verification ID: {prescription.verificationId}</p>}
+                                  </div>
+                                )}
+                              </article>
+                            </div>
+                          );
+                        }
+                        const message = timelineItem.message;
+
                       const mine = message.senderModel !== 'Patient' || message.senderId === currentUserId;
                       const prescriptionNotice = /Prescription issued\s*\(([^)]+)\)/i.exec(message.messageText || '');
                       if (prescriptionNotice && prescriptions.some((item) => item.verificationId === prescriptionNotice[1] || item._id === prescriptionNotice[1])) return null;
@@ -964,21 +1024,6 @@ export default function StaffPatientConsultationsPage() {
                         </div>
                       );
                     })}
-                    {prescriptions.length > 0 && (
-                      <div className="space-y-2 pt-2">
-                        {prescriptions.map((prescription) => (
-                          <div key={prescription._id || prescription.verificationId} className="flex items-center gap-3 rounded-2xl border border-[#cde7e1] bg-white p-3 shadow-sm">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]"><Pill className="h-5 w-5" /></div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-xs font-bold text-slate-800">{prescription.diagnosis || 'Prescription issued'}</p>
-                              <p className="mt-0.5 text-[10px] text-slate-500">{prescription.prescriberName || 'Care team'} · {prescription.dateIssued ? formatDate(prescription.dateIssued) : 'Prescription details available'}</p>
-                              <p className="mt-0.5 text-[9px] text-slate-400">{(prescription.medications || []).length} medication{(prescription.medications || []).length === 1 ? '' : 's'} · {String(prescription.status || 'ISSUED').replace(/_/g, ' ')}</p>
-                            </div>
-                            <button type="button" onClick={() => setViewingPrescription(prescription)} className="shrink-0 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2 text-[10px] font-bold text-[#1b7b68] hover:bg-[#e5f5ef]">View details</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center text-center">
@@ -1177,41 +1222,6 @@ export default function StaffPatientConsultationsPage() {
           )}
         </aside>
       </div>
-      {viewingPrescription && (
-        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setViewingPrescription(null)}>
-          <section role="dialog" aria-modal="true" aria-labelledby="prescription-details-title" className="max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border border-slate-100 bg-white p-5 shadow-2xl sm:max-w-xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]"><Pill className="h-5 w-5" /></div>
-                <div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse · Prescription</p><h2 id="prescription-details-title" className="mt-1 text-base font-bold text-slate-800">{viewingPrescription.diagnosis || 'Prescription details'}</h2><p className="mt-1 text-[10px] text-slate-500">{viewingPrescription.prescriberName || 'Care team'} · {viewingPrescription.dateIssued ? formatDate(viewingPrescription.dateIssued) : 'Date not provided'}</p></div>
-              </div>
-              <button type="button" onClick={() => setViewingPrescription(null)} aria-label="Close prescription details" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-slate-800">Medication details</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase text-emerald-700">{String(viewingPrescription.status || 'ISSUED').replace(/_/g, ' ')}</span></div>
-                {(viewingPrescription.medications || []).length ? <div className="mt-2 space-y-2">{viewingPrescription.medications.map((medication: any, index: number) => <div key={index} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-bold text-slate-800">{index + 1}. {medication.genericName || 'Medication'}{medication.strengthForm ? ` · ${medication.strengthForm}` : ''}</p><div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-2"><p><span className="font-semibold">Dose / frequency:</span> {medication.dosageFrequency || 'Not specified'}</p><p><span className="font-semibold">Duration:</span> {medication.duration || 'Not specified'}</p><p><span className="font-semibold">Quantity:</span> {medication.quantity || 'Not specified'}</p><p><span className="font-semibold">Route:</span> {medication.route || 'Not specified'}</p></div></div>)}</div> : <p className="mt-2 text-xs text-slate-500">Medication details are not available from the server response.</p>}
-              </div>
-              {viewingPrescription.patientSnapshot?.fullName && <p className="text-xs text-slate-600"><span className="font-semibold">Patient:</span> {viewingPrescription.patientSnapshot.fullName}</p>}
-              {viewingPrescription.clinicalNotes && <div className="rounded-xl border border-slate-100 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Clinical notes</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{viewingPrescription.clinicalNotes}</p></div>}
-              {viewingPrescription.patientSnapshot?.knownDrugAllergies?.length > 0 && <div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Known drug allergies</p><p className="mt-1 text-xs text-amber-900">{viewingPrescription.patientSnapshot.knownDrugAllergies.join(', ')}</p></div>}
-              {viewingPrescription.patientInstructions && <div className="rounded-xl border border-[#cde7e1] bg-[#f5fbf9] p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]">Patient instructions</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{viewingPrescription.patientInstructions}</p></div>}
-              {viewingPrescription.pharmacistInstructions && <div className="rounded-xl border border-slate-100 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pharmacist instructions</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{viewingPrescription.pharmacistInstructions}</p></div>}
-              {viewingPrescription.verificationId && <p className="break-all text-[10px] text-slate-400">Verification ID: {viewingPrescription.verificationId}</p>}
-              {viewingPrescription.facilityName && <p className="text-[10px] text-slate-500">Facility: {viewingPrescription.facilityName}</p>}
-              {viewingPrescription.registrationNumber && <p className="text-[10px] text-slate-500">Professional registration: {viewingPrescription.registrationNumber}</p>}
-              <div className="flex flex-wrap gap-2 text-[10px] text-slate-600">
-                {typeof viewingPrescription.genericSubstitutionPermitted === 'boolean' && <span className="rounded-full bg-slate-100 px-2 py-1">Generic substitution: {viewingPrescription.genericSubstitutionPermitted ? 'Permitted' : 'Not permitted'}</span>}
-                {typeof viewingPrescription.refillAuthorized === 'boolean' && <span className="rounded-full bg-slate-100 px-2 py-1">Refills: {viewingPrescription.refillAuthorized ? `${viewingPrescription.numberOfRefills || 0} authorized` : 'Not authorized'}</span>}
-                {viewingPrescription.controlledSubstance && <span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">Controlled substance</span>}
-              </div>
-              {viewingPrescription.digitalSignature && <p className="text-[10px] text-slate-500">Signed by: {viewingPrescription.digitalSignature}{viewingPrescription.signedAt ? ` · ${formatDate(viewingPrescription.signedAt)}` : ''}</p>}
-
-            </div>
-            <div className="mt-5 flex justify-end border-t border-slate-100 pt-3"><button type="button" onClick={() => setViewingPrescription(null)} className="rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white">Close details</button></div>
-          </section>
-        </div>
-      )}
     </div>
   );
 }
