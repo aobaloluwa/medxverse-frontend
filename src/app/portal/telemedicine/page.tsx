@@ -431,7 +431,7 @@ export default function TelemedicinePage() {
         </div>
       )}
 
-      <div className="grid h-[calc(100vh-7rem)] min-h-[600px] max-h-none grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
+      <div className="grid h-[calc(100dvh-8rem)] min-h-[420px] max-h-none grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:h-[calc(100vh-7rem)] md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
         <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-slate-100 bg-white`}>
           <div className="border-b border-slate-100 p-4">
             <div className="flex items-center justify-between gap-2">
