@@ -94,7 +94,7 @@ export default function StaffCallPage() {
       ) : session ? (
         <div className="grid gap-4 w-full">
           <div className="min-w-0">
-            {session.consultationType !== 'CHAT' && session.status !== 'COMPLETED' && session.status !== 'CANCELLED' ? (
+            {session.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status) ? (
               <JitsiMeetingEmbed
                 sessionId={session._id}
                 displayName={displayName}
@@ -108,7 +108,7 @@ export default function StaffCallPage() {
               <section className="flex min-h-[360px] flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-sm">
                 <Video className="h-10 w-10 text-[#1b7b68]" />
                 <h2 className="mt-4 text-lg font-bold text-slate-900">Video call unavailable</h2>
-                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">This consultation is chat-only or has already been completed. Check the consultation setup or return to the consultation list.</p>
+                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{session.consultationType === 'CHAT' ? 'This is a messages-only consultation. Voice and video calls are disabled.' : 'This consultation has ended. The patient can book a follow-up consultation.'}</p>
               </section>
             )}
           </div>

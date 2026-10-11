@@ -13,6 +13,8 @@ import {
   Loader2,
   MessageCircle,
   MoreHorizontal,
+  Images,
+  FileText,
   Paperclip,
   Pill,
   Phone,
@@ -148,6 +150,7 @@ export default function StaffPatientConsultationsPage() {
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null);
+  const [showChatProfile, setShowChatProfile] = useState(false);
   const [prescriptionSaving, setPrescriptionSaving] = useState(false);
   const [pharmacyName, setPharmacyName] = useState('');
   const [dispensingId, setDispensingId] = useState('');
@@ -283,6 +286,8 @@ export default function StaffPatientConsultationsPage() {
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
+    setMessages([]);
+    setPrescriptions([]);
     void loadMessages(selectedId, true);
     if (!selectedId) return;
     const interval = window.setInterval(() => {
@@ -348,6 +353,10 @@ export default function StaffPatientConsultationsPage() {
 
   const sendMessage = async () => {
     if (!selected || (!draft.trim() && !attachmentFile) || sending) return;
+    if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status)) {
+      setError('This consultation has ended. Messages are disabled. The patient can book a follow-up consultation.');
+      return;
+    }
     if (attachmentFile && attachmentFile.size > 10 * 1024 * 1024) {
       setError('Attachments must be 10 MB or smaller.');
       return;
@@ -416,6 +425,14 @@ export default function StaffPatientConsultationsPage() {
 
   const joinConsultation = async (session: Consultation) => {
     setError('');
+    if (session.consultationType === 'CHAT') {
+      setError('This is a messages-only consultation. Voice and video calls are disabled.');
+      return;
+    }
+    if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status)) {
+      setError('This consultation has ended. Book a follow-up consultation to start a new session.');
+      return;
+    }
 
     if (!session.meetingRoomId && !session.meetingUrl) {
       setError('This consultation has no meeting link or room ID. Ask the administrator to check the consultation setup.');
@@ -702,9 +719,9 @@ export default function StaffPatientConsultationsPage() {
                     <ArrowLeft className="h-4 w-4" />
                   </button>
 
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68]">
+                  <button type="button" onClick={() => setShowChatProfile(true)} title="Open chat profile" aria-label="Open patient chat profile" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68] ring-offset-2 transition hover:ring-2 hover:ring-[#1b7b68]">
                     {avatarLetters(patientName(selected))}
-                  </div>
+                  </button>
 
                   <div className="min-w-0">
                     <h2 className="truncate text-sm font-bold text-slate-800">
@@ -726,14 +743,14 @@ export default function StaffPatientConsultationsPage() {
                     <RefreshCw className="h-4 w-4" />
                   </button>
 
-                  {selected.consultationType !== 'CHAT' && (
+                  {selected.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
                     <button
                       type="button"
                       onClick={() => void joinConsultation(selected)}
                       className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1b7b68] px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c] sm:flex-none sm:px-3.5"
                     >
-                      <Video className="h-3.5 w-3.5" />
-                      <span>{selected.status === 'IN_PROGRESS' ? 'Join call' : 'Start consultation'}</span>
+                      {selected.consultationType === 'VOICE' ? <Phone className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
+                      <span>{selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
                     </button>
                   )}
 
@@ -1051,6 +1068,7 @@ export default function StaffPatientConsultationsPage() {
                 )}
               </div>
 
+              {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) ? (
               <div className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
                 {attachmentFile && (
                   <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-2 text-xs text-slate-600">
@@ -1103,6 +1121,13 @@ export default function StaffPatientConsultationsPage() {
                   </div>
                 </div>
               </div>
+              ) : (
+                <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-4 text-center text-xs text-slate-500">
+                  {['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status)
+                    ? 'This consultation has ended. Messaging and calls are disabled. The patient can book a follow-up consultation.'
+                    : 'Secure messaging is available during active consultations, regardless of whether the booked call is voice or video.'}
+                </div>
+              )}
             </>
           ) : (
             <div className="flex h-full flex-col items-center justify-center p-8 text-center">
@@ -1202,15 +1227,15 @@ export default function StaffPatientConsultationsPage() {
                 </p>
               </div>
 
-              {selected.consultationType !== 'CHAT' && (
+              {selected.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
                 <div className="pt-2">
                   <button
                     type="button"
                     onClick={() => void joinConsultation(selected)}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] py-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c]"
                   >
-                    <Video className="h-3.5 w-3.5" />
-                    <span>{selected.status === 'IN_PROGRESS' ? 'Join video room' : 'Start consultation'}</span>
+                    {selected.consultationType === 'VOICE' ? <Phone className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
+                    <span>{selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
                   </button>
                 </div>
               )}
@@ -1222,6 +1247,38 @@ export default function StaffPatientConsultationsPage() {
           )}
         </aside>
       </div>
+
+      {showChatProfile && selected && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm sm:p-5" onClick={() => setShowChatProfile(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="staff-chat-profile-title" className="max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-100 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 py-4 backdrop-blur">
+              <div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse chat</p><h2 id="staff-chat-profile-title" className="mt-1 text-base font-bold text-slate-900">Chat profile</h2></div>
+              <button type="button" onClick={() => setShowChatProfile(false)} aria-label="Close chat profile" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-6 p-5">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#e8f5f3] text-lg font-bold text-[#1b7b68]">{avatarLetters(patientName(selected))}</div>
+                <div className="min-w-0"><h3 className="break-words text-lg font-bold text-slate-900">{patientName(selected)}</h3><p className="mt-1 text-xs text-slate-500">Patient · {selected.consultationType} consultation</p><p className="mt-1 text-[11px] text-slate-400">{statusLabel(selected.status)} · {formatDate(selected.scheduledStartTime)}</p></div>
+              </div>
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Images className="h-4 w-4 text-[#1b7b68]" /> Media</h3>
+                {messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).length ? (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 text-[10px] text-slate-600 hover:border-[#1b7b68]"><img src={item.attachmentUrl} alt={item.attachmentName || 'Shared image'} className="h-20 w-full rounded-lg object-cover" /><span className="mt-1 block truncate">{item.attachmentName || 'Image'}</span></a>)}</div>
+                ) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No images shared in this chat yet.</p>}
+              </section>
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><FileText className="h-4 w-4 text-[#1b7b68]" /> Documents</h3>
+                <div className="space-y-2">{messages.filter((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 hover:border-[#1b7b68]"><FileText className="h-5 w-5 shrink-0 text-[#1b7b68]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{item.attachmentName || 'Shared document'}</span><span className="text-[10px] text-slate-400">{item.sentAt ? formatTime(item.sentAt) : ''}</span></a>)}</div>
+                {!messages.some((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')) && <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No documents shared in this chat yet.</p>}
+              </section>
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Pill className="h-4 w-4 text-[#1b7b68]" /> Prescriptions in this chat</h3>
+                {prescriptions.length ? <div className="space-y-2">{prescriptions.map((item: any) => <article key={item._id || item.verificationId} className="rounded-xl border border-slate-100 p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs font-bold text-slate-800">{item.diagnosis || 'Prescription'}</p><p className="mt-1 text-[10px] text-slate-500">{item.dateIssued ? formatDate(item.dateIssued) : 'Date not available'}</p></div><span className="rounded-full bg-[#e8f5f3] px-2 py-1 text-[9px] font-bold text-[#1b7b68]">{item.status || 'ISSUED'}</span></div><p className="mt-2 text-[11px] text-slate-600">{Array.isArray(item.medications) ? item.medications.map((med: any) => med.genericName).filter(Boolean).join(', ') : 'Medication details unavailable'}</p><button type="button" onClick={() => { setViewingPrescription(item); setShowChatProfile(false); }} className="mt-2 text-[10px] font-bold text-[#1b7b68] hover:underline">View prescription details</button></article>)}</div> : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No prescriptions have been issued in this chat.</p>}
+              </section>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

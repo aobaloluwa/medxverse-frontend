@@ -139,7 +139,7 @@ export const telemedicineService = {
   getSessions: () => request<{ sessions: TelemedicineSession[]; total: number; page: number; totalPages: number }>('/sessions?limit=50'),
   createSessionForAppointment: (appointmentId: string) =>
     request<TelemedicineSession>(`/sessions/from-appointment/${encodeURIComponent(appointmentId)}`, { method: 'POST' }),
-  createSession: (input: { patientId: string; doctorId: string; consultationType: ConsultationType; scheduledStartTime: string; chiefComplaint?: string; followUpOfSessionId?: string }) =>
+  createSession: (input: { patientId: string; doctorId: string; consultationType: Exclude<ConsultationType, 'CHAT'>; scheduledStartTime: string; chiefComplaint?: string; followUpOfSessionId?: string }) =>
     request<TelemedicineSession>('/sessions', { method: 'POST', body: JSON.stringify(input) }),
   updateStatus: (id: string, status: TelemedicineStatus, clinicalNotes?: string) =>
     request<TelemedicineSession>(`/sessions/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, clinicalNotes }) }),

@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation';
 import {
   Activity,
   ArrowDown,
+  Images,
+  FileText,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -109,9 +111,10 @@ export default function TelemedicinePage() {
   const [messageAttachment, setMessageAttachment] = useState<File | null>(null);
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null);
+  const [showChatProfile, setShowChatProfile] = useState(false);
   const [patientId, setPatientId] = useState('');
   const [doctorId, setDoctorId] = useState('');
-  const [consultationType, setConsultationType] = useState<ConsultationType>('VIDEO');
+  const [consultationType, setConsultationType] = useState<Exclude<ConsultationType, 'CHAT'>>('VIDEO');
   const [scheduledStartTime, setScheduledStartTime] = useState('');
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [followUpOfSessionId, setFollowUpOfSessionId] = useState('');
@@ -227,8 +230,9 @@ export default function TelemedicinePage() {
   }, [isAuthenticated, isPatientPortal, isPatientLinked, refresh]);
 
   useEffect(() => {
+    setMessages([]);
+    setPrescriptions([]);
     if (!selectedId) {
-      setMessages([]);
       return;
     }
 
@@ -344,6 +348,11 @@ export default function TelemedicinePage() {
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
+    if (!selectedSession) return;
+    if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status)) {
+      setError('This consultation has ended. Messages are disabled. You can book a follow-up consultation.');
+      return;
+    }
     const body = messageText.trim();
     const fileToSend = messageAttachment;
     if (!selectedId || (!body && !fileToSend) || sending) return;
@@ -562,9 +571,9 @@ export default function TelemedicinePage() {
               <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white px-3 py-3 sm:px-5">
                 <div className="flex min-w-0 items-center gap-3">
                   <button type="button" onClick={() => setSelectedId('')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 md:hidden" aria-label="Back to consultations">←</button>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68]">
+                  <button type="button" onClick={() => setShowChatProfile(true)} title="Open chat profile" aria-label="Open chat participant profile" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68] ring-offset-2 transition hover:ring-2 hover:ring-[#1b7b68]">
                     {initials(isPatientPortal ? `Dr. ${displayName(selectedSession.doctorId)}` : displayName(selectedSession.patientId))}
-                  </div>
+                  </button>
                   <div className="min-w-0">
                     <h2 className="truncate text-sm font-bold text-slate-800">
                       {isPatientPortal ? `Dr. ${displayName(selectedSession.doctorId)}` : displayName(selectedSession.patientId)}
@@ -781,6 +790,7 @@ export default function TelemedicinePage() {
                     </div>
                   )}
                 </div>
+                {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) ? (
                 <form onSubmit={sendMessage} className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
                   {messageAttachment && (
                     <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-2 text-xs text-slate-600">
@@ -816,6 +826,13 @@ export default function TelemedicinePage() {
                     </button>
                   </div>
                 </form>
+                ) : (
+                  <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-4 text-center text-xs text-slate-500">
+                    {['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status)
+                      ? 'This consultation has ended. Messaging and calls are disabled. You can book a follow-up consultation.'
+                      : 'Secure messaging is available during active consultations, regardless of whether the booked call is voice or video.'}
+                  </div>
+                )}
               </div>
             </>
           ) : (
@@ -842,7 +859,7 @@ export default function TelemedicinePage() {
                 {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
                   isPatientPortal ? (
                     <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c]">
-                      <VideoIcon className="h-4 w-4" /> Join consultation
+                      {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}
                     </Link>
                   ) : (
                     <button type="button" onClick={() => setEmbeddedCallSessionId(selectedSession._id)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c]">
@@ -853,7 +870,7 @@ export default function TelemedicinePage() {
                 <button type="button" onClick={() => {
                   setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));
                   setDoctorId(idOf(selectedSession.doctorId));
-                  setConsultationType(selectedSession.consultationType);
+                  setConsultationType(selectedSession.consultationType === 'VOICE' ? 'VOICE' : 'VIDEO');
                   setChiefComplaint(`Follow-up consultation for ${selectedSession._id}`);
                   setFollowUpOfSessionId(selectedSession._id);
                   setShowBooking(true);
@@ -897,6 +914,38 @@ export default function TelemedicinePage() {
         </aside>
       </div>
 
+      {showChatProfile && selectedSession && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm sm:p-5" onClick={() => setShowChatProfile(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="patient-chat-profile-title" className="max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-100 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 py-4 backdrop-blur">
+              <div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse chat</p><h2 id="patient-chat-profile-title" className="mt-1 text-base font-bold text-slate-900">Chat profile</h2></div>
+              <button type="button" onClick={() => setShowChatProfile(false)} aria-label="Close chat profile" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-6 p-5">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#e8f5f3] text-lg font-bold text-[#1b7b68]">{initials(isPatientPortal ? `Dr. ${displayName(selectedSession.doctorId)}` : displayName(selectedSession.patientId))}</div>
+                <div className="min-w-0"><h3 className="break-words text-lg font-bold text-slate-900">{isPatientPortal ? `Dr. ${displayName(selectedSession.doctorId)}` : displayName(selectedSession.patientId)}</h3><p className="mt-1 text-xs text-slate-500">{isPatientPortal ? 'Consulting doctor' : 'Patient'} · {selectedSession.consultationType} consultation</p><p className="mt-1 text-[11px] text-slate-400">{statusLabels[selectedSession.status]} · {formatDateTime(selectedSession.scheduledStartTime)}</p></div>
+              </div>
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Images className="h-4 w-4 text-[#1b7b68]" /> Media</h3>
+                {messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).length ? (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 text-[10px] text-slate-600 hover:border-[#1b7b68]"><img src={item.attachmentUrl} alt={item.attachmentName || 'Shared image'} className="h-20 w-full rounded-lg object-cover" /><span className="mt-1 block truncate">{item.attachmentName || 'Image'}</span></a>)}</div>
+                ) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No images shared in this chat yet.</p>}
+              </section>
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><FileText className="h-4 w-4 text-[#1b7b68]" /> Documents</h3>
+                <div className="space-y-2">{messages.filter((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 hover:border-[#1b7b68]"><FileText className="h-5 w-5 shrink-0 text-[#1b7b68]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{item.attachmentName || 'Shared document'}</span><span className="text-[10px] text-slate-400">{formatTime(item.sentAt)}</span></a>)}</div>
+                {!messages.some((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')) && <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No documents shared in this chat yet.</p>}
+              </section>
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Pill className="h-4 w-4 text-[#1b7b68]" /> Prescriptions in this chat</h3>
+                {prescriptions.length ? <div className="space-y-2">{prescriptions.map((item: any) => <article key={item._id || item.verificationId} className="rounded-xl border border-slate-100 p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs font-bold text-slate-800">{item.diagnosis || 'Prescription'}</p><p className="mt-1 text-[10px] text-slate-500">{item.dateIssued ? formatDateTime(item.dateIssued) : 'Date not available'}</p></div><span className="rounded-full bg-[#e8f5f3] px-2 py-1 text-[9px] font-bold text-[#1b7b68]">{item.status || 'ISSUED'}</span></div><p className="mt-2 text-[11px] text-slate-600">{Array.isArray(item.medications) ? item.medications.map((med: any) => med.genericName).filter(Boolean).join(', ') : 'Medication details unavailable'}</p><button type="button" onClick={() => { setViewingPrescription(item); setShowChatProfile(false); }} className="mt-2 text-[10px] font-bold text-[#1b7b68] hover:underline">View prescription details</button></article>)}</div> : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No prescriptions have been issued in this chat.</p>}
+              </section>
+            </div>
+          </section>
+        </div>
+      )}
+
       {showSessionDetails && selectedSession && (
         <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4 lg:hidden" onClick={() => setShowSessionDetails(false)}>
           <section role="dialog" aria-modal="true" aria-labelledby="session-details-title" className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border border-slate-100 bg-white p-5 shadow-2xl sm:max-w-lg sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
@@ -915,12 +964,12 @@ export default function TelemedicinePage() {
             </div>
             <div className="mt-4 space-y-2">
               {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
-                isPatientPortal ? <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white"><VideoIcon className="h-4 w-4" /> Join consultation</Link> : <button type="button" onClick={() => { setEmbeddedCallSessionId(selectedSession._id); setShowSessionDetails(false); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white"><VideoIcon className="h-4 w-4" /> Join consultation</button>
+                isPatientPortal ? <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}</Link> : <button type="button" onClick={() => { setEmbeddedCallSessionId(selectedSession._id); setShowSessionDetails(false); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}</button>
               )}
               <button type="button" onClick={() => {
                 setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));
                 setDoctorId(idOf(selectedSession.doctorId));
-                setConsultationType(selectedSession.consultationType);
+                setConsultationType(selectedSession.consultationType === 'VOICE' ? 'VOICE' : 'VIDEO');
                 setChiefComplaint(`Follow-up consultation for ${selectedSession._id}`);
                 setFollowUpOfSessionId(selectedSession._id);
                 setShowSessionDetails(false);
@@ -958,8 +1007,8 @@ export default function TelemedicinePage() {
                 </select>
               </label>
               <label className="text-xs font-semibold text-slate-700">Consultation type
-                <select value={consultationType} onChange={(event) => setConsultationType(event.target.value as ConsultationType)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#1b7b68]">
-                  <option value="VIDEO">Video consultation</option><option value="VOICE">Voice call</option><option value="CHAT">Messaging only</option>
+                <select value={consultationType} onChange={(event) => setConsultationType(event.target.value as Exclude<ConsultationType, 'CHAT'>)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#1b7b68]">
+                  <option value="VIDEO">Video consultation</option><option value="VOICE">Voice call</option>
                 </select>
               </label>
               <label className="text-xs font-semibold text-slate-700">Date and time

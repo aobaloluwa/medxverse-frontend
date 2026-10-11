@@ -11,6 +11,7 @@ import {
   Mic,
   MicOff,
   MonitorUp,
+  Phone,
   PhoneOff,
   Settings2,
   Video,
@@ -214,6 +215,7 @@ export default function JitsiMeetingEmbed({
             prejoinPageEnabled: true,
             startWithAudioMuted: false,
             startWithVideoMuted: voiceOnly,
+            disableVideo: voiceOnly,
             disableDeepLinking: true,
             toolbarButtons: [],
             hideConferenceSubject: true,
@@ -351,12 +353,12 @@ export default function JitsiMeetingEmbed({
   return (
     <section
       className="overflow-hidden rounded-2xl border border-slate-200 bg-[#07111f] shadow-lg"
-      aria-label="MedXVerse video consultation"
+      aria-label={voiceOnly ? "MedXVerse voice consultation" : "MedXVerse video consultation"}
     >
       <header className="flex items-center justify-between gap-3 border-b border-white/10 bg-[#0c1929] px-4 py-3 text-white sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300">
-            <Video className="h-5 w-5" />
+            {voiceOnly ? <Phone className="h-5 w-5" /> : <Video className="h-5 w-5" />}
           </div>
 
           <div className="min-w-0">
@@ -429,21 +431,17 @@ export default function JitsiMeetingEmbed({
           )}
         </button>
 
-        <button
-          type="button"
-          className={`${controlClass} ${videoMuted ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
-          onClick={() => execute('toggleVideo')}
-          aria-label={
-            videoMuted ? 'Turn camera on' : 'Turn camera off'
-          }
-          title={videoMuted ? 'Turn camera on' : 'Turn camera off'}
-        >
-          {videoMuted ? (
-            <CameraOff className="h-5 w-5" />
-          ) : (
-            <Camera className="h-5 w-5" />
-          )}
-        </button>
+        {!voiceOnly && (
+          <button
+            type="button"
+            className={`${controlClass} ${videoMuted ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
+            onClick={() => execute('toggleVideo')}
+            aria-label={videoMuted ? 'Turn camera on' : 'Turn camera off'}
+            title={videoMuted ? 'Turn camera on' : 'Turn camera off'}
+          >
+            {videoMuted ? <CameraOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
+          </button>
+        )}
 
         <button
           type="button"
