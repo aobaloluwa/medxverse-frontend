@@ -108,6 +108,7 @@ export default function TelemedicinePage() {
   const [messageText, setMessageText] = useState('');
   const [messageAttachment, setMessageAttachment] = useState<File | null>(null);
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [viewingPrescription, setViewingPrescription] = useState<any | null>(null);
   const [patientId, setPatientId] = useState('');
   const [doctorId, setDoctorId] = useState('');
   const [consultationType, setConsultationType] = useState<ConsultationType>('VIDEO');
@@ -126,6 +127,21 @@ export default function TelemedicinePage() {
     () => sessions.find((session) => session._id === selectedId) || null,
     [sessions, selectedId],
   );
+
+  const newestFirstSessions = useMemo(() => [...sessions].sort((a, b) => {
+    const activityTime = (session: TelemedicineSession) => {
+      const record = session as TelemedicineSession & {
+        lastMessageAt?: string;
+        updatedAt?: string;
+        createdAt?: string;
+        lastMessage?: { sentAt?: string; createdAt?: string };
+      };
+      const raw = record.lastMessageAt || record.lastMessage?.sentAt || record.lastMessage?.createdAt || record.updatedAt || record.createdAt || session.actualStartTime || session.scheduledStartTime;
+      const time = raw ? new Date(raw).getTime() : 0;
+      return Number.isFinite(time) ? time : 0;
+    };
+    return activityTime(b) - activityTime(a);
+  }), [sessions]);
 
   const refresh = useCallback(async () => {
     if (isPatientPortal && !isPatientLinked) {
@@ -199,7 +215,21 @@ export default function TelemedicinePage() {
     const loadMessages = async () => {
       try {
         const data = await telemedicineService.getMessages(selectedId);
-        if (!cancelled) setMessages(data || []);
+        if (!cancelled) {
+          setMessages(data || []);
+          const latestMessage = [...(data || [])].sort((a, b) => {
+            const timeOf = (message: TelemedicineMessage) => {
+              const time = new Date(message.sentAt || (message as any).createdAt || 0).getTime();
+              return Number.isFinite(time) ? time : 0;
+            };
+            return timeOf(b) - timeOf(a);
+          })[0];
+          if (latestMessage) {
+            setSessions((current) => current.map((item) => item._id === selectedId
+              ? { ...item, lastMessageAt: latestMessage.sentAt || (latestMessage as any).createdAt || (item as any).lastMessageAt } as TelemedicineSession
+              : item));
+          }
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Unable to load consultation messages.');
@@ -220,10 +250,16 @@ export default function TelemedicinePage() {
   useEffect(() => {
     if (!selectedId) { setPrescriptions([]); return; }
     let active = true;
-    telemedicineService.getSessionPrescriptions(selectedId)
-      .then((items) => { if (active) setPrescriptions(Array.isArray(items) ? items : []); })
-      .catch(() => { if (active) setPrescriptions([]); });
-    return () => { active = false; };
+    const loadPrescriptions = () => {
+      telemedicineService.getSessionPrescriptions(selectedId)
+        .then((items) => { if (active) setPrescriptions(Array.isArray(items) ? items : []); })
+        .catch(() => { if (active) setPrescriptions([]); });
+    };
+    loadPrescriptions();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') loadPrescriptions();
+    }, 10000);
+    return () => { active = false; window.clearInterval(interval); };
   }, [selectedId]);
 
   useEffect(() => {
@@ -309,6 +345,9 @@ export default function TelemedicinePage() {
       setMessages((current) =>
         current.some((item) => item._id === created._id) ? current : [...current, created],
       );
+      setSessions((current) => current.map((item) => item._id === selectedId
+        ? { ...item, lastMessageAt: created.sentAt || new Date().toISOString() } as TelemedicineSession
+        : item));
       setMessageText('');
       setMessageAttachment(null);
     } catch (err) {
@@ -453,7 +492,7 @@ export default function TelemedicinePage() {
                 <Loader2 className="h-5 w-5 animate-spin text-[#1b7b68]" /> Loading consultations…
               </div>
             ) : sessions.length ? (
-              sessions.map((session) => {
+              newestFirstSessions.map((session) => {
                 const active = session._id === selectedId;
                 const otherName = isPatientPortal
                   ? `Dr. ${displayName(session.doctorId)}`
@@ -561,7 +600,7 @@ export default function TelemedicinePage() {
                   }}
                   className="relative min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4"
                 >
-                  {messages.length === 0 ? (
+                  {messages.length === 0 && prescriptions.length === 0 ? (
                     <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]"><MessageCircle className="h-5 w-5" /></div>
                       <p className="mt-3 text-xs font-semibold text-slate-600">No messages yet</p>
@@ -574,6 +613,8 @@ export default function TelemedicinePage() {
                         const isMine =
                           (Boolean(message.senderId && currentUserId) && String(message.senderId) === currentUserId) ||
                           (isPatientPortal ? message.senderModel === 'Patient' : message.senderModel !== 'Patient');
+                        const prescriptionNotice = /Prescription issued\s*\(([^)]+)\)/i.exec(message.messageText || '');
+                        if (prescriptionNotice && prescriptions.some((item) => item.verificationId === prescriptionNotice[1] || item._id === prescriptionNotice[1])) return null;
 
                         if (message.messageType === 'CALL_SUMMARY' && message.callSummary) {
                           const call = message.callSummary;
@@ -647,29 +688,18 @@ export default function TelemedicinePage() {
                         );
                       })}
                       {prescriptions.length > 0 && (
-                        <div className="mb-4 rounded-2xl border border-[#cde7e1] bg-[#f5fbf9] p-3">
-                          <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-800">
-                            <Pill className="h-4 w-4 text-[#1b7b68]" />
-                            Prescriptions for this consultation
-                          </div>
-                          <div className="space-y-2">
-                            {prescriptions.map((prescription) => (
-                              <div key={prescription._id || prescription.verificationId} className="rounded-xl border border-white bg-white p-3">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="text-xs font-bold text-slate-800">{prescription.diagnosis || 'Prescription'}</p>
-                                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase text-emerald-700">{String(prescription.status || 'ISSUED').replace(/_/g, ' ')}</span>
-                                </div>
-                                <p className="mt-1 text-[10px] text-slate-500">Prescriber: {prescription.prescriberName || 'Care team'} · {prescription.dateIssued ? formatDateTime(prescription.dateIssued) : 'Date not provided'}</p>
-                                <div className="mt-2 space-y-1">
-                                  {(prescription.medications || []).map((medication: any, index: number) => (
-                                    <p key={index} className="text-xs text-slate-700">{medication.genericName} — {medication.strengthForm}; {medication.dosageFrequency}; {medication.duration}; Qty {medication.quantity}; {medication.route}</p>
-                                  ))}
-                                </div>
-                                {prescription.patientInstructions && <p className="mt-2 text-xs text-slate-600">Instructions: {prescription.patientInstructions}</p>}
-                                {prescription.verificationId && <p className="mt-2 break-all text-[10px] text-slate-400">Verification ID: {prescription.verificationId}</p>}
+                        <div className="space-y-2 pt-2">
+                          {prescriptions.map((prescription) => (
+                            <div key={prescription._id || prescription.verificationId} className="flex items-center gap-3 rounded-2xl border border-[#cde7e1] bg-white p-3 shadow-sm">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]"><Pill className="h-5 w-5" /></div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-bold text-slate-800">{prescription.diagnosis || 'Prescription issued'}</p>
+                                <p className="mt-0.5 text-[10px] text-slate-500">{prescription.prescriberName || 'Care team'} · {prescription.dateIssued ? formatDateTime(prescription.dateIssued) : 'Prescription details available'}</p>
+                                <p className="mt-0.5 text-[9px] text-slate-400">{(prescription.medications || []).length} medication{(prescription.medications || []).length === 1 ? '' : 's'} · {String(prescription.status || 'ISSUED').replace(/_/g, ' ')}</p>
                               </div>
-                            ))}
-                          </div>
+                              <button type="button" onClick={() => setViewingPrescription(prescription)} className="shrink-0 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2 text-[10px] font-bold text-[#1b7b68] hover:bg-[#e5f5ef]">View details</button>
+                            </div>
+                          ))}
                         </div>
                       )}
 
@@ -880,6 +910,41 @@ export default function TelemedicinePage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {viewingPrescription && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setViewingPrescription(null)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="prescription-details-title" className="max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border border-slate-100 bg-white p-5 shadow-2xl sm:max-w-xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]"><Pill className="h-5 w-5" /></div>
+                <div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse · Prescription</p><h2 id="prescription-details-title" className="mt-1 text-base font-bold text-slate-800">{viewingPrescription.diagnosis || 'Prescription details'}</h2><p className="mt-1 text-[10px] text-slate-500">{viewingPrescription.prescriberName || 'Care team'} · {viewingPrescription.dateIssued ? formatDateTime(viewingPrescription.dateIssued) : 'Date not provided'}</p></div>
+              </div>
+              <button type="button" onClick={() => setViewingPrescription(null)} aria-label="Close prescription details" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-slate-800">Medication details</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase text-emerald-700">{String(viewingPrescription.status || 'ISSUED').replace(/_/g, ' ')}</span></div>
+                {(viewingPrescription.medications || []).length ? <div className="mt-2 space-y-2">{viewingPrescription.medications.map((medication: any, index: number) => <div key={index} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-bold text-slate-800">{index + 1}. {medication.genericName || 'Medication'}{medication.strengthForm ? ` · ${medication.strengthForm}` : ''}</p><div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-2"><p><span className="font-semibold">Dose / frequency:</span> {medication.dosageFrequency || 'Not specified'}</p><p><span className="font-semibold">Duration:</span> {medication.duration || 'Not specified'}</p><p><span className="font-semibold">Quantity:</span> {medication.quantity || 'Not specified'}</p><p><span className="font-semibold">Route:</span> {medication.route || 'Not specified'}</p></div></div>)}</div> : <p className="mt-2 text-xs text-slate-500">Medication details are not available from the server response.</p>}
+              </div>
+              {viewingPrescription.patientSnapshot?.fullName && !isPatientPortal && <p className="text-xs text-slate-600"><span className="font-semibold">Patient:</span> {viewingPrescription.patientSnapshot.fullName}</p>}
+              {viewingPrescription.clinicalNotes && <div className="rounded-xl border border-slate-100 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Clinical notes</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{viewingPrescription.clinicalNotes}</p></div>}
+              {viewingPrescription.patientSnapshot?.knownDrugAllergies?.length > 0 && <div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Known drug allergies</p><p className="mt-1 text-xs text-amber-900">{viewingPrescription.patientSnapshot.knownDrugAllergies.join(', ')}</p></div>}
+              {viewingPrescription.patientInstructions && <div className="rounded-xl border border-[#cde7e1] bg-[#f5fbf9] p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]">Patient instructions</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{viewingPrescription.patientInstructions}</p></div>}
+              {!isPatientPortal && viewingPrescription.pharmacistInstructions && <div className="rounded-xl border border-slate-100 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pharmacist instructions</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{viewingPrescription.pharmacistInstructions}</p></div>}
+              {viewingPrescription.verificationId && <p className="break-all text-[10px] text-slate-400">Verification ID: {viewingPrescription.verificationId}</p>}
+              {viewingPrescription.facilityName && <p className="text-[10px] text-slate-500">Facility: {viewingPrescription.facilityName}</p>}
+              {viewingPrescription.registrationNumber && <p className="text-[10px] text-slate-500">Professional registration: {viewingPrescription.registrationNumber}</p>}
+              <div className="flex flex-wrap gap-2 text-[10px] text-slate-600">
+                {typeof viewingPrescription.genericSubstitutionPermitted === 'boolean' && <span className="rounded-full bg-slate-100 px-2 py-1">Generic substitution: {viewingPrescription.genericSubstitutionPermitted ? 'Permitted' : 'Not permitted'}</span>}
+                {typeof viewingPrescription.refillAuthorized === 'boolean' && <span className="rounded-full bg-slate-100 px-2 py-1">Refills: {viewingPrescription.refillAuthorized ? `${viewingPrescription.numberOfRefills || 0} authorized` : 'Not authorized'}</span>}
+                {viewingPrescription.controlledSubstance && <span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">Controlled substance</span>}
+              </div>
+              {viewingPrescription.digitalSignature && <p className="text-[10px] text-slate-500">Signed by: {viewingPrescription.digitalSignature}{viewingPrescription.signedAt ? ` · ${formatDateTime(viewingPrescription.signedAt)}` : ''}</p>}
+
+            </div>
+            <div className="mt-5 flex justify-end border-t border-slate-100 pt-3"><button type="button" onClick={() => setViewingPrescription(null)} className="rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white">Close details</button></div>
+          </section>
         </div>
       )}
     </div>

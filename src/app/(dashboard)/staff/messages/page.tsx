@@ -167,11 +167,21 @@ export default function StaffMessagesPage() {
   const [newMessageCount, setNewMessageCount] = useState(0);
 
   const filteredConversations = useMemo(() => {
+    // Sort by the most recent conversation activity before applying search.
+    // API responses are not guaranteed to arrive in newest-first order.
+    const newestFirst = [...conversations].sort((a, b) => {
+      const activityTime = (item: Conversation) => {
+        const raw = item.lastMessageAt || (item as any).lastMessage?.createdAt || item.updatedAt || item.createdAt;
+        const time = raw ? new Date(raw).getTime() : 0;
+        return Number.isFinite(time) ? time : 0;
+      };
+      return activityTime(b) - activityTime(a);
+    });
     const query = search.trim().toLowerCase();
 
-    if (!query) return conversations;
+    if (!query) return newestFirst;
 
-    return conversations.filter((conversation) => {
+    return newestFirst.filter((conversation) => {
       const label = conversationLabel(
         conversation,
         currentUserId,
@@ -770,7 +780,7 @@ export default function StaffMessagesPage() {
   };
 
   return (
-    <div className="relative h-[calc(100vh-8rem)] max-h-[calc(100vh-8rem)] overflow-hidden overscroll-none rounded-3xl border border-slate-100 bg-white shadow-sm">
+    <div className="relative h-[calc(100dvh-6rem)] max-h-none min-h-[500px] md:h-[calc(100vh-6rem)] overflow-hidden overscroll-none rounded-3xl border border-slate-100 bg-white shadow-sm">
       <div className="grid h-full grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)_240px]">
         <aside
           className={`${
