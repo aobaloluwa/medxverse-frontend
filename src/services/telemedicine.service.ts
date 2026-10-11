@@ -44,6 +44,13 @@ export interface TelemedicineMessage {
   attachmentMimeType?: string;
   attachmentSize?: number;
   prescriptionId?: string;
+  messageType?: 'TEXT' | 'CALL_SUMMARY';
+  callSummary?: {
+    callId: string;
+    callType: 'VIDEO' | 'VOICE';
+    durationSeconds: number;
+    participantCount: number;
+  };
   sentAt: string;
 }
 
@@ -140,6 +147,11 @@ export const telemedicineService = {
   updateStatus: (id: string, status: TelemedicineStatus, clinicalNotes?: string) =>
     request<TelemedicineSession>(`/sessions/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, clinicalNotes }) }),
   getMessages: (sessionId: string) => request<TelemedicineMessage[]>(`/messages/session/${encodeURIComponent(sessionId)}`),
+  recordCallSummary: (sessionId: string, input: { callId: string; durationSeconds: number; participantCount: number }) =>
+    request<TelemedicineMessage>(`/sessions/${encodeURIComponent(sessionId)}/call-summary`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   sendMessage: (sessionId: string, messageText: string, attachment?: { url: string; name: string; mimeType: string; size: number }) =>
     request<TelemedicineMessage>('/messages', { method: 'POST', body: JSON.stringify({
       sessionId, messageText,

@@ -66,6 +66,13 @@ type ConsultationMessage = {
   attachmentMimeType?: string;
   attachmentSize?: number;
   prescriptionId?: string;
+  messageType?: 'TEXT' | 'CALL_SUMMARY';
+  callSummary?: {
+    callId: string;
+    callType: 'VIDEO' | 'VOICE';
+    durationSeconds: number;
+    participantCount: number;
+  };
   sentAt: string;
 };
 
@@ -809,6 +816,30 @@ export default function StaffPatientConsultationsPage() {
                   <div className="mx-auto max-w-3xl space-y-3">
                     {messages.map((message) => {
                       const mine = message.senderModel !== 'Patient' || message.senderId === currentUserId;
+
+                      if (message.messageType === 'CALL_SUMMARY' && message.callSummary) {
+                        const call = message.callSummary;
+                        const minutes = Math.floor(call.durationSeconds / 60);
+                        const seconds = call.durationSeconds % 60;
+                        const durationLabel = minutes > 0
+                          ? `${minutes} min${seconds ? ` ${seconds} sec` : ''}`
+                          : `${seconds} sec`;
+                        const CallIcon = call.callType === 'VIDEO' ? Video : Phone;
+                        return (
+                          <div key={message._id} className="flex justify-center py-1">
+                            <div className="flex max-w-[95%] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 shadow-sm">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]">
+                                <CallIcon className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800">{call.callType === 'VIDEO' ? 'Video call' : 'Voice call'}</p>
+                                <p className="mt-0.5 text-[11px] text-slate-600">{durationLabel} · {call.participantCount} {call.participantCount === 1 ? 'participant' : 'participants'} joined</p>
+                                <p className="mt-1 text-[9px] text-slate-400">{formatTime(message.sentAt)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
 
                       return (
                         <div

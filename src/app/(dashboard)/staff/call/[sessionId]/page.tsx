@@ -99,6 +99,7 @@ export default function StaffCallPage() {
                 sessionId={session._id}
                 displayName={displayName}
                 voiceOnly={session.consultationType === 'VOICE'}
+                recordCallSummary
                 onJoined={() => { if (session.status === 'WAITING_ROOM') void updateStatus('IN_PROGRESS'); }}
                 onLeft={() => { /* A participant leaving does not necessarily mean the consultation is complete. */ }}
                 onClose={() => router.push('/staff/messages/consultations')}

@@ -14,6 +14,7 @@ import {
   Loader2,
   MessageCircle,
   Paperclip,
+  Phone,
   Pill,
   Plus,
   RefreshCw,
@@ -431,7 +432,7 @@ export default function TelemedicinePage() {
         </div>
       )}
 
-      <div className="grid h-[calc(100dvh-8rem)] min-h-[420px] max-h-none grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:h-[calc(100vh-7rem)] md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
+      <div className="grid h-[calc(100dvh-6.5rem)] min-h-[460px] max-h-none grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:h-[calc(100vh-7rem)] md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
         <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-slate-100 bg-white`}>
           <div className="border-b border-slate-100 p-4">
             <div className="flex items-center justify-between gap-2">
@@ -531,6 +532,7 @@ export default function TelemedicinePage() {
                     sessionId={selectedSession._id}
                     displayName={isPatientPortal ? `Patient ${displayName(selectedSession.patientId)}` : `Dr. ${displayName(selectedSession.doctorId)}`}
                     voiceOnly={selectedSession.consultationType === 'VOICE'}
+                  recordCallSummary={!isPatientPortal}
                     onJoined={() => {
                       if (!isPatientPortal && selectedSession.status === 'WAITING_ROOM') void changeStatus('IN_PROGRESS');
                     }}
@@ -572,6 +574,30 @@ export default function TelemedicinePage() {
                         const isMine =
                           (Boolean(message.senderId && currentUserId) && String(message.senderId) === currentUserId) ||
                           (isPatientPortal ? message.senderModel === 'Patient' : message.senderModel !== 'Patient');
+
+                        if (message.messageType === 'CALL_SUMMARY' && message.callSummary) {
+                          const call = message.callSummary;
+                          const minutes = Math.floor(call.durationSeconds / 60);
+                          const seconds = call.durationSeconds % 60;
+                          const durationLabel = minutes > 0
+                            ? `${minutes} min${seconds ? ` ${seconds} sec` : ''}`
+                            : `${seconds} sec`;
+                          const CallIcon = call.callType === 'VIDEO' ? VideoIcon : Phone;
+                          return (
+                            <div key={message._id} className="flex justify-center py-1">
+                              <div className="flex max-w-[95%] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 shadow-sm">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]">
+                                  <CallIcon className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-800">{call.callType === 'VIDEO' ? 'Video call' : 'Voice call'}</p>
+                                  <p className="mt-0.5 text-[11px] text-slate-600">{durationLabel} · {call.participantCount} {call.participantCount === 1 ? 'participant' : 'participants'} joined</p>
+                                  <p className="mt-1 text-[9px] text-slate-400">{formatTime(message.sentAt) || formatDateTime(message.sentAt)}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
 
                         return (
                           <div

@@ -94,6 +94,7 @@ interface JitsiMeetingEmbedProps {
   sessionId: string;
   displayName: string;
   voiceOnly?: boolean;
+  recordCallSummary?: boolean;
   onJoined?: () => void;
   onLeft?: () => void;
   onClose: () => void;
@@ -103,6 +104,7 @@ export default function JitsiMeetingEmbed({
   sessionId,
   displayName,
   voiceOnly = false,
+  recordCallSummary = false,
   onJoined,
   onLeft,
   onClose,
@@ -112,6 +114,12 @@ export default function JitsiMeetingEmbed({
   const onJoinedRef = useRef(onJoined);
   const onLeftRef = useRef(onLeft);
   const onCloseRef = useRef(onClose);
+  const joinedAtRef = useRef<number | null>(null);
+  const callIdRef = useRef('');
+  const summarySentRef = useRef(false);
+  const remoteParticipantsRef = useRef<Set<string>>(new Set());
+  const maxParticipantCountRef = useRef(1);
+  const summaryPromiseRef = useRef<Promise<void> | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -124,6 +132,30 @@ export default function JitsiMeetingEmbed({
   onLeftRef.current = onLeft;
   onCloseRef.current = onClose;
 
+  const saveCallSummary = () => {
+    if (!recordCallSummary || summarySentRef.current || !joinedAtRef.current || !callIdRef.current) {
+      return summaryPromiseRef.current || Promise.resolve();
+    }
+
+    // Set the guard synchronously so Jitsi's leave/close events cannot create
+    // duplicate summaries for the same call.
+    summarySentRef.current = true;
+    const durationSeconds = Math.max(0, Math.floor((Date.now() - joinedAtRef.current) / 1000));
+    const participantCount = Math.max(1, maxParticipantCountRef.current);
+    summaryPromiseRef.current = telemedicineService
+      .recordCallSummary(sessionId, {
+        callId: callIdRef.current,
+        durationSeconds,
+        participantCount,
+      })
+      .then(() => undefined)
+      .catch((cause) => {
+        // Do not interrupt ending the call if saving its history fails.
+        console.error('Unable to save telemedicine call summary:', cause);
+      });
+    return summaryPromiseRef.current;
+  };
+
   useEffect(() => {
     let cancelled = false;
     let api: JitsiApi | null = null;
@@ -134,6 +166,12 @@ export default function JitsiMeetingEmbed({
       setError('');
       setRoomName('');
       setJoined(false);
+      joinedAtRef.current = null;
+      callIdRef.current = '';
+      summarySentRef.current = false;
+      remoteParticipantsRef.current = new Set();
+      maxParticipantCountRef.current = 1;
+      summaryPromiseRef.current = null;
 
       try {
         const credentials =
@@ -197,14 +235,33 @@ export default function JitsiMeetingEmbed({
         meeting.addEventListener('videoConferenceJoined', () => {
           if (cancelled) return;
 
+          joinedAtRef.current = Date.now();
+          callIdRef.current = `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          summarySentRef.current = false;
+          maxParticipantCountRef.current = Math.max(1, remoteParticipantsRef.current.size + 1);
           setJoined(true);
           setLoading(false);
           onJoinedRef.current?.();
         });
 
+        meeting.addEventListener('participantJoined', (event) => {
+          const participantId = String(event?.id || event?.participant?.id || '');
+          if (participantId) remoteParticipantsRef.current.add(participantId);
+          maxParticipantCountRef.current = Math.max(
+            maxParticipantCountRef.current,
+            remoteParticipantsRef.current.size + (joinedAtRef.current ? 1 : 0),
+          );
+        });
+
+        meeting.addEventListener('participantLeft', (event) => {
+          const participantId = String(event?.id || event?.participant?.id || '');
+          if (participantId) remoteParticipantsRef.current.delete(participantId);
+        });
+
         meeting.addEventListener('videoConferenceLeft', () => {
           if (cancelled) return;
 
+          void saveCallSummary();
           setJoined(false);
           onLeftRef.current?.();
         });
@@ -248,6 +305,7 @@ export default function JitsiMeetingEmbed({
 
     return () => {
       cancelled = true;
+      void saveCallSummary();
 
       if (loadingTimeout) {
         clearTimeout(loadingTimeout);
@@ -263,7 +321,7 @@ export default function JitsiMeetingEmbed({
         apiRef.current = null;
       }
     };
-  }, [sessionId, displayName, voiceOnly]);
+  }, [sessionId, displayName, voiceOnly, recordCallSummary]);
 
   const execute = (command: string) => {
     try {
@@ -273,7 +331,10 @@ export default function JitsiMeetingEmbed({
     }
   };
 
-  const endCall = () => {
+  const endCall = async () => {
+    // Save the history before navigating away. The Jitsi leave event uses the
+    // same guarded function, so both paths are safe.
+    await saveCallSummary();
     try {
       apiRef.current?.executeCommand('hangup');
     } finally {
@@ -317,7 +378,7 @@ export default function JitsiMeetingEmbed({
 
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => void endCall()}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
           aria-label="Close call view"
         >
