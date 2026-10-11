@@ -6,12 +6,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
+  ArrowDown,
   CalendarClock,
   Check,
   CheckCircle2,
   Clock3,
   Loader2,
   MessageCircle,
+  Paperclip,
+  Pill,
   Plus,
   RefreshCw,
   Send,
@@ -21,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import PatientShell from '@/components/patient/PatientShell';
+import ChatAttachmentViewer from '@/components/chat/ChatAttachmentViewer';
 import JitsiMeetingEmbed from '@/components/telemedicine/JitsiMeetingEmbed';
 import {
   telemedicineService,
@@ -30,6 +34,8 @@ import {
   type ConsultationType,
   type TelemedicineStatus,
 } from '@/services/telemedicine.service';
+
+
 
 const statusLabels: Record<TelemedicineStatus, string> = {
   WAITING_ROOM: 'Waiting room',
@@ -94,7 +100,13 @@ export default function TelemedicinePage() {
   const [selectedId, setSelectedId] = useState('');
   const [embeddedCallSessionId, setEmbeddedCallSessionId] = useState('');
   const [messages, setMessages] = useState<TelemedicineMessage[]>([]);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const wasAtBottomRef = useRef(true);
+  const previousMessageIdsRef = useRef<Set<string>>(new Set());
+  const [newMessageCount, setNewMessageCount] = useState(0);
   const [messageText, setMessageText] = useState('');
+  const [messageAttachment, setMessageAttachment] = useState<File | null>(null);
+  const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [patientId, setPatientId] = useState('');
   const [doctorId, setDoctorId] = useState('');
   const [consultationType, setConsultationType] = useState<ConsultationType>('VIDEO');
@@ -194,22 +206,50 @@ export default function TelemedicinePage() {
     };
 
     void loadMessages();
-    const timer = window.setInterval(() => void loadMessages(), 5000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadMessages();
+    }, 10000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [selectedId]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const isFirstScrollRef = useRef(true);
+  useEffect(() => {
+    if (!selectedId) { setPrescriptions([]); return; }
+    let active = true;
+    telemedicineService.getSessionPrescriptions(selectedId)
+      .then((items) => { if (active) setPrescriptions(Array.isArray(items) ? items : []); })
+      .catch(() => { if (active) setPrescriptions([]); });
+    return () => { active = false; };
+  }, [selectedId]);
 
   useEffect(() => {
-    if (!messagesEndRef.current) return;
-    const behavior = isFirstScrollRef.current ? 'instant' : 'smooth';
-    isFirstScrollRef.current = false;
-    messagesEndRef.current.scrollIntoView({ behavior: behavior as ScrollBehavior });
+    setNewMessageCount(0);
+    wasAtBottomRef.current = true;
+    previousMessageIdsRef.current = new Set();
+  }, [selectedId]);
+
+  useEffect(() => {
+    const container = messagesScrollRef.current;
+    if (!container || !wasAtBottomRef.current) return;
+    requestAnimationFrame(() => container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }));
   }, [messages]);
+
+  useEffect(() => {
+    const previousIds = previousMessageIdsRef.current;
+    if (previousIds.size > 0 && !wasAtBottomRef.current) {
+      const incomingCount = messages.filter((message) => {
+        if (previousIds.has(String(message._id)) || String(message._id).startsWith('local-')) return false;
+        const userId = String(account?.patientId || account?.userId || account?.id || '');
+        const isMine = (Boolean(message.senderId && userId) && String(message.senderId) === userId) ||
+          (isPatientPortal ? message.senderModel === 'Patient' : message.senderModel !== 'Patient');
+        return !isMine;
+      }).length;
+      if (incomingCount > 0) setNewMessageCount((count) => count + incomingCount);
+    }
+    previousMessageIdsRef.current = new Set(messages.map((message) => String(message._id)));
+  }, [messages, account?.patientId, account?.userId, account?.id, isPatientPortal]);
 
   async function createSession(event: FormEvent) {
     event.preventDefault();
@@ -246,16 +286,29 @@ export default function TelemedicinePage() {
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
     const body = messageText.trim();
-    if (!selectedId || !body || sending) return;
+    const fileToSend = messageAttachment;
+    if (!selectedId || (!body && !fileToSend) || sending) return;
+    if (fileToSend && fileToSend.size > 10 * 1024 * 1024) {
+      setError('Attachments must be 10 MB or smaller.');
+      return;
+    }
 
     setSending(true);
     setError('');
     try {
-      const created = await telemedicineService.sendMessage(selectedId, body);
+      const attachment = fileToSend
+        ? await telemedicineService.uploadMessageAttachment(selectedId, fileToSend)
+        : undefined;
+      const created = await telemedicineService.sendMessage(
+        selectedId,
+        body || (attachment ? attachment.name : ''),
+        attachment,
+      );
       setMessages((current) =>
         current.some((item) => item._id === created._id) ? current : [...current, created],
       );
       setMessageText('');
+      setMessageAttachment(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send message.');
     } finally {
@@ -535,7 +588,15 @@ export default function TelemedicinePage() {
                   </div>
                   <MessageCircle className="h-4 w-4 text-[#1b7b68]" />
                 </div>
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+                <div
+                  ref={messagesScrollRef}
+                  onScroll={(event) => {
+                    const el = event.currentTarget;
+                    wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                    if (wasAtBottomRef.current) setNewMessageCount(0);
+                  }}
+                  className="relative min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4"
+                >
                   {messages.length === 0 ? (
                     <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]"><MessageCircle className="h-5 w-5" /></div>
@@ -556,7 +617,7 @@ export default function TelemedicinePage() {
                             className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
-                              className={`max-w-[82%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                              className={`max-w-[92%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[82%] sm:px-4 ${
                                 isMine
                                   ? 'rounded-br-md bg-[#1b7b68] text-white'
                                   : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'
@@ -571,9 +632,20 @@ export default function TelemedicinePage() {
                                     : 'Care team'}
                                 </p>
                               )}
-                              <p className="whitespace-pre-wrap break-words text-sm leading-5">
-                                {message.messageText}
-                              </p>
+                              {message.messageText && !(message.attachmentUrl && message.messageText === message.attachmentName) && (
+                                <p className="whitespace-pre-wrap break-words text-sm leading-5">
+                                  {message.messageText}
+                                </p>
+                              )}
+                              {message.attachmentUrl && (
+                                <ChatAttachmentViewer
+                                  url={message.attachmentUrl}
+                                  name={message.attachmentName}
+                                  mimeType={message.attachmentMimeType}
+                                  size={message.attachmentSize}
+                                  mine={isMine}
+                                />
+                              )}
                               <div
                                 className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${
                                   isMine ? 'text-white/70' : 'text-slate-400'
@@ -586,12 +658,67 @@ export default function TelemedicinePage() {
                           </div>
                         );
                       })}
-                      <div ref={messagesEndRef} />
+                      {prescriptions.length > 0 && (
+                        <div className="mb-4 rounded-2xl border border-[#cde7e1] bg-[#f5fbf9] p-3">
+                          <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-800">
+                            <Pill className="h-4 w-4 text-[#1b7b68]" />
+                            Prescriptions for this consultation
+                          </div>
+                          <div className="space-y-2">
+                            {prescriptions.map((prescription) => (
+                              <div key={prescription._id || prescription.verificationId} className="rounded-xl border border-white bg-white p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs font-bold text-slate-800">{prescription.diagnosis || 'Prescription'}</p>
+                                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase text-emerald-700">{String(prescription.status || 'ISSUED').replace(/_/g, ' ')}</span>
+                                </div>
+                                <p className="mt-1 text-[10px] text-slate-500">Prescriber: {prescription.prescriberName || 'Care team'} · {prescription.dateIssued ? formatDateTime(prescription.dateIssued) : 'Date not provided'}</p>
+                                <div className="mt-2 space-y-1">
+                                  {(prescription.medications || []).map((medication: any, index: number) => (
+                                    <p key={index} className="text-xs text-slate-700">{medication.genericName} — {medication.strengthForm}; {medication.dosageFrequency}; {medication.duration}; Qty {medication.quantity}; {medication.route}</p>
+                                  ))}
+                                </div>
+                                {prescription.patientInstructions && <p className="mt-2 text-xs text-slate-600">Instructions: {prescription.patientInstructions}</p>}
+                                {prescription.verificationId && <p className="mt-2 break-all text-[10px] text-slate-400">Verification ID: {prescription.verificationId}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+                  {newMessageCount > 0 && (
+                    <div className="sticky bottom-2 z-20 flex justify-center pointer-events-none">
+                      <button type="button" onClick={() => { const el = messagesScrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>
+                        {newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`}
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
                     </div>
                   )}
                 </div>
                 <form onSubmit={sendMessage} className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
+                  {messageAttachment && (
+                    <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-2 text-xs text-slate-600">
+                      <span className="truncate">{messageAttachment.name}</span>
+                      <button type="button" onClick={() => setMessageAttachment(null)} className="font-semibold text-rose-600">Remove</button>
+                    </div>
+                  )}
                   <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[#1b7b68] focus-within:bg-white">
+                    <label className="flex h-10 shrink-0 cursor-pointer items-center justify-center rounded-xl px-2 text-slate-600 hover:bg-slate-100" title="Attach image or document">
+                      <Paperclip className="h-4 w-4" />
+                      <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf" onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        if (file && file.size > 10 * 1024 * 1024) {
+                          setError('Attachments must be 10 MB or smaller.');
+                          setMessageAttachment(null);
+                        } else {
+                          setError('');
+                          setMessageAttachment(file);
+                        }
+                        event.currentTarget.value = '';
+                      }} />
+                    </label>
                     <input
                       value={messageText}
                       onChange={(event) => setMessageText(event.target.value)}
@@ -599,7 +726,7 @@ export default function TelemedicinePage() {
                       placeholder="Write a secure consultation message…"
                       className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm text-slate-700 outline-none placeholder:text-slate-400"
                     />
-                    <button type="submit" disabled={sending || !messageText.trim()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#1b7b68] px-3.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:opacity-50">
+                    <button type="submit" disabled={sending || (!messageText.trim() && !messageAttachment)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#1b7b68] px-3.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:opacity-50">
                       {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       Send
                     </button>

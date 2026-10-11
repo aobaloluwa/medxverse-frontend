@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
 import Link from 'next/link';
 import {
+  ArrowDown,
   ArrowLeft,
   CalendarClock,
   Check,
@@ -11,13 +13,18 @@ import {
   Loader2,
   MessageCircle,
   MoreHorizontal,
+  Paperclip,
+  Pill,
   Phone,
   RefreshCw,
   Search,
   Send,
   Video,
+  X,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
+import ChatAttachmentViewer from '@/components/chat/ChatAttachmentViewer';
+import { API_BASE_URL } from '@/services/appointment.service';
 import { useAuthStore } from '@/store/useAuthStore';
 
 type PatientRef = {
@@ -55,8 +62,14 @@ type ConsultationMessage = {
   senderModel: 'User' | 'Patient';
   messageText: string;
   attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  prescriptionId?: string;
   sentAt: string;
 };
+
+
 
 function unwrap<T>(response: any, fallback: T): T {
   let value = response;
@@ -111,11 +124,29 @@ export default function StaffPatientConsultationsPage() {
   const currentUserId = account?.userId || account?.id || account?._id || '';
   const selectedIdRef = useRef('');
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const wasAtBottomRef = useRef(true);
+  const previousMessageIdsRef = useRef<Set<string>>(new Set());
+  const [newMessageCount, setNewMessageCount] = useState(0);
 
   const [sessions, setSessions] = useState<Consultation[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [messages, setMessages] = useState<ConsultationMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
+  const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [prescriptionSaving, setPrescriptionSaving] = useState(false);
+  const [pharmacyName, setPharmacyName] = useState('');
+  const [dispensingId, setDispensingId] = useState('');
+  const [prescriptionForm, setPrescriptionForm] = useState({
+    facilityName: '', prescriberName: '', professionalRegistrationNumber: '',
+    patientFullName: '', patientDob: '', patientNumber: '', allergies: '',
+    diagnosis: '', clinicalNotes: '', medications: [{ genericName: '', strengthForm: '', dosageFrequency: '', duration: '', quantity: '', route: '' }],
+    patientInstructions: '', pharmacistInstructions: '',
+    prescriberAuthorizationId: '', digitalSignature: '',
+    genericSubstitutionPermitted: false, refillAuthorized: false,
+    numberOfRefills: '0', controlledSubstance: false,
+  });
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -184,22 +215,40 @@ export default function StaffPatientConsultationsPage() {
   }, [loadSessions]);
 
   useEffect(() => {
+    setNewMessageCount(0);
+    wasAtBottomRef.current = true;
+    previousMessageIdsRef.current = new Set();
+  }, [selectedId]);
+
+  useEffect(() => {
     selectedIdRef.current = selectedId;
     void loadMessages(selectedId, true);
     if (!selectedId) return;
-    const interval = window.setInterval(() => void loadMessages(selectedId, false), 4000);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadMessages(selectedId, false);
+    }, 10000);
     return () => window.clearInterval(interval);
   }, [selectedId, loadMessages]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
-    if (!container) return;
+    if (!container || !wasAtBottomRef.current) return;
     requestAnimationFrame(() => {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: 'smooth',
-      });
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     });
+  }, [messages]);
+
+  useEffect(() => {
+    const previousIds = previousMessageIdsRef.current;
+    if (previousIds.size > 0 && !wasAtBottomRef.current) {
+      const incomingCount = messages.filter((message) =>
+        !previousIds.has(String(message._id)) &&
+        !String(message._id).startsWith('local-') &&
+        message.senderModel === 'Patient'
+      ).length;
+      if (incomingCount > 0) setNewMessageCount((count) => count + incomingCount);
+    }
+    previousMessageIdsRef.current = new Set(messages.map((message) => String(message._id)));
   }, [messages]);
 
   const selected = useMemo(() => sessions.find((item) => item._id === selectedId) || null, [sessions, selectedId]);
@@ -226,8 +275,13 @@ export default function StaffPatientConsultationsPage() {
   }, [sessions, filter, search]);
 
   const sendMessage = async () => {
-    if (!selected || !draft.trim() || sending) return;
+    if (!selected || (!draft.trim() && !attachmentFile) || sending) return;
+    if (attachmentFile && attachmentFile.size > 10 * 1024 * 1024) {
+      setError('Attachments must be 10 MB or smaller.');
+      return;
+    }
     const text = draft.trim();
+    const fileToSend = attachmentFile;
     setDraft('');
     setSending(true);
     const optimistic: ConsultationMessage = {
@@ -240,9 +294,25 @@ export default function StaffPatientConsultationsPage() {
     };
     setMessages((current) => [...current, optimistic]);
     try {
+      let attachment: { url: string; name: string; mimeType: string; size: number } | undefined;
+      if (fileToSend) {
+        const form = new FormData();
+        form.append('file', fileToSend);
+        const uploadResponse = await fetch(`${API_BASE_URL}/telemedicine/messages/session/${encodeURIComponent(selected._id)}/attachments`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+          body: form,
+        });
+        const uploadPayload = await uploadResponse.json().catch(() => null);
+        if (!uploadResponse.ok || uploadPayload?.success === false) {
+          throw new Error(uploadPayload?.message || 'Attachment upload failed.');
+        }
+        attachment = uploadPayload.data;
+      }
       const response = await apiClient.post('/telemedicine/messages', {
         sessionId: selected._id,
-        messageText: text,
+        messageText: text || attachment?.name || '',
+        ...(attachment ? { attachmentUrl: attachment.url, attachmentName: attachment.name, attachmentMimeType: attachment.mimeType, attachmentSize: attachment.size } : {}),
       });
       const saved = unwrap<ConsultationMessage | null>(response, null);
       if (saved?._id) {
@@ -250,16 +320,18 @@ export default function StaffPatientConsultationsPage() {
       } else {
         await loadMessages(selected._id, false);
       }
+      setAttachmentFile(null);
     } catch (cause: any) {
       setMessages((current) => current.filter((item) => item._id !== optimistic._id));
       setDraft(text);
+      if (fileToSend) setAttachmentFile(fileToSend);
       setError(cause?.message || 'Message could not be sent.');
     } finally {
       setSending(false);
     }
   };
 
-  const onComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void sendMessage();
@@ -302,6 +374,94 @@ export default function StaffPatientConsultationsPage() {
       setError(cause?.message || 'Unable to complete this consultation.');
     }
   };
+
+  useEffect(() => {
+    if (!selectedId) { setPrescriptions([]); return; }
+    let active = true;
+    apiClient.get(`/telemedicine/sessions/${encodeURIComponent(selectedId)}/prescriptions`)
+      .then((response) => {
+        const value = unwrap<any>(response, []);
+        if (active) setPrescriptions(Array.isArray(value) ? value : Array.isArray(value?.prescriptions) ? value.prescriptions : []);
+      })
+      .catch(() => { if (active) setPrescriptions([]); });
+    return () => { active = false; };
+  }, [selectedId]);
+
+  async function dispensePrescription(prescriptionId: string) {
+    if (!pharmacyName.trim()) {
+      setError('Enter the pharmacy name before recording dispensing.');
+      return;
+    }
+    setDispensingId(prescriptionId);
+    setError('');
+    try {
+      const response = await apiClient.patch(`/telemedicine/prescriptions/${encodeURIComponent(prescriptionId)}/dispense`, {
+        pharmacyName: pharmacyName.trim(),
+        pharmacistName: account?.name || `${account?.firstName || ''} ${account?.lastName || ''}`.trim(),
+      });
+      const updated = unwrap<any>(response, {});
+      setPrescriptions((current) => current.map((item) => item._id === prescriptionId ? updated : item));
+      setPharmacyName('');
+    } catch (cause: any) {
+      setError(cause?.message || 'Unable to record prescription dispensing.');
+    } finally {
+      setDispensingId('');
+    }
+  }
+
+  async function issuePrescription(event: FormEvent) {
+    event.preventDefault();
+    if (!selected) return;
+    const patient = typeof selected.patientId === 'string' ? undefined : selected.patientId;
+    const medications = prescriptionForm.medications.map((item) => ({
+      genericName: item.genericName.trim(),
+      strengthForm: item.strengthForm.trim(),
+      dosageFrequency: item.dosageFrequency.trim(),
+      duration: item.duration.trim(),
+      quantity: item.quantity.trim(),
+      route: item.route.trim(),
+    }));
+    if (!medications.length || medications.some((item) => !item.genericName || !item.strengthForm || !item.dosageFrequency || !item.duration || !item.quantity || !item.route)) {
+      setError('Complete all fields for every medication before issuing the prescription.');
+      return;
+    }
+    setPrescriptionSaving(true);
+    setError('');
+    try {
+      const response = await apiClient.post(`/telemedicine/sessions/${encodeURIComponent(selected._id)}/prescriptions`, {
+        facilityName: prescriptionForm.facilityName.trim(),
+        prescriberName: prescriptionForm.prescriberName.trim(),
+        registrationNumber: prescriptionForm.professionalRegistrationNumber.trim(),
+        patientSnapshot: {
+          fullName: prescriptionForm.patientFullName.trim() || patientName(selected),
+          dateOfBirth: prescriptionForm.patientDob || undefined,
+          patientIdNumber: patient?.mrn || undefined,
+          contactNumber: prescriptionForm.patientNumber.trim() || patient?.phone || undefined,
+          knownDrugAllergies: prescriptionForm.allergies.split(',').map((item) => item.trim()).filter(Boolean),
+        },
+        diagnosis: prescriptionForm.diagnosis.trim(),
+        clinicalNotes: prescriptionForm.clinicalNotes.trim(),
+        medications,
+        patientInstructions: prescriptionForm.patientInstructions.trim(),
+        pharmacistInstructions: prescriptionForm.pharmacistInstructions.trim(),
+        genericSubstitutionPermitted: prescriptionForm.genericSubstitutionPermitted,
+        refillAuthorized: prescriptionForm.refillAuthorized,
+        numberOfRefills: Number(prescriptionForm.numberOfRefills || 0),
+        controlledSubstance: prescriptionForm.controlledSubstance,
+        prescriberAuthorizationId: prescriptionForm.prescriberAuthorizationId.trim(),
+        digitalSignature: prescriptionForm.digitalSignature.trim(),
+        signedAt: new Date().toISOString(),
+      });
+      const created = unwrap<any>(response, {});
+      setPrescriptions((current) => [created, ...current]);
+      setShowPrescriptionForm(false);
+      setPrescriptionForm((current) => ({ ...current, diagnosis: '', clinicalNotes: '', medications: [{ genericName: '', strengthForm: '', dosageFrequency: '', duration: '', quantity: '', route: '' }], patientInstructions: '', pharmacistInstructions: '' }));
+    } catch (cause: any) {
+      setError(cause?.message || 'Unable to issue the prescription.');
+    } finally {
+      setPrescriptionSaving(false);
+    }
+  }
 
   return (
     <div className="relative h-[calc(100vh-8rem)] max-h-[calc(100vh-8rem)] overflow-hidden overscroll-none rounded-3xl border border-slate-100 bg-white font-sans shadow-sm">
@@ -515,6 +675,16 @@ export default function StaffPatientConsultationsPage() {
                     </button>
                   )}
                 </div>
+                  {account?.role?.toUpperCase() === 'DOCTOR' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPrescriptionForm((value) => !value)}
+                      className="flex items-center gap-1.5 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]"
+                    >
+                      <Pill className="h-3.5 w-3.5" />
+                      Prescription
+                    </button>
+                  )}
               </header>
 
               {error && (
@@ -523,9 +693,113 @@ export default function StaffPatientConsultationsPage() {
                 </div>
               )}
 
+              {showPrescriptionForm && (
+                <form onSubmit={issuePrescription} className="mx-4 mt-3 max-h-[48vh] overflow-y-auto rounded-2xl border border-[#cde7e1] bg-[#f8fcfb] p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">MHMS Telemedicine Prescription</h3>
+                      <p className="text-[10px] text-slate-500">Issued prescriptions are saved to the consultation and sent to the HMS EHR.</p>
+                    </div>
+                    <button type="button" onClick={() => setShowPrescriptionForm(false)} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {([
+                      ['facilityName', 'Facility / Hospital name'],
+                      ['prescriberName', 'Prescriber full name'],
+                      ['professionalRegistrationNumber', 'Professional registration number'],
+                      ['patientFullName', 'Patient full name'],
+                      ['patientDob', 'Patient date of birth'],
+                      ['patientNumber', 'Patient contact number'],
+                      ['allergies', 'Known drug allergies (comma separated)'],
+                      ['diagnosis', 'Diagnosis'],
+                      ['clinicalNotes', 'Clinical notes'],
+                      ['prescriberAuthorizationId', 'Prescriber authorization ID'],
+                      ['digitalSignature', 'Digital signature (typed name)'],
+                    ] as const).map(([field, label]) => (
+                      <label key={field} className="text-[10px] font-semibold text-slate-600">
+                        {label}
+                        <input
+                          required={['facilityName','prescriberName','professionalRegistrationNumber','diagnosis','prescriberAuthorizationId','digitalSignature'].includes(field)}
+                          type={field === 'patientDob' ? 'date' : 'text'}
+                          value={(prescriptionForm as any)[field]}
+                          onChange={(event) => setPrescriptionForm((current) => ({ ...current, [field]: event.target.value }))}
+                          className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-normal text-slate-700 outline-none focus:border-[#1b7b68]"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-800">Medication details (up to 6)</h4>
+                    <button type="button" disabled={prescriptionForm.medications.length >= 6} onClick={() => setPrescriptionForm((current) => ({ ...current, medications: [...current.medications, { genericName: '', strengthForm: '', dosageFrequency: '', duration: '', quantity: '', route: '' }] }))} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-[#1b7b68] disabled:opacity-40">Add medication</button>
+                  </div>
+                  {prescriptionForm.medications.map((medication, index) => (
+                    <div key={index} className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="mb-2 flex items-center justify-between text-[10px] font-bold text-slate-600">Medication {index + 1}
+                        {prescriptionForm.medications.length > 1 && <button type="button" onClick={() => setPrescriptionForm((current) => ({ ...current, medications: current.medications.filter((_, itemIndex) => itemIndex !== index) }))} className="text-rose-600">Remove</button>}
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {([
+                          ['genericName', 'Generic name'],
+                          ['strengthForm', 'Strength / dosage form'],
+                          ['dosageFrequency', 'Dosage / frequency'],
+                          ['duration', 'Duration'],
+                          ['quantity', 'Quantity'],
+                          ['route', 'Route'],
+                        ] as const).map(([field, label]) => (
+                          <label key={field} className="text-[10px] font-semibold text-slate-600">{label}
+                            <input required value={medication[field]} onChange={(event) => setPrescriptionForm((current) => ({ ...current, medications: current.medications.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: event.target.value } : item) }))} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal outline-none focus:border-[#1b7b68]" />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-[10px] font-semibold text-slate-600">Patient instructions<textarea value={prescriptionForm.patientInstructions} onChange={(event) => setPrescriptionForm((current) => ({ ...current, patientInstructions: event.target.value }))} className="mt-1 min-h-16 w-full rounded-lg border border-slate-200 p-2 text-xs font-normal" /></label>
+                    <label className="text-[10px] font-semibold text-slate-600">Pharmacist instructions<textarea value={prescriptionForm.pharmacistInstructions} onChange={(event) => setPrescriptionForm((current) => ({ ...current, pharmacistInstructions: event.target.value }))} className="mt-1 min-h-16 w-full rounded-lg border border-slate-200 p-2 text-xs font-normal" /></label>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-slate-600">
+                    <label className="flex items-center gap-1.5"><input type="checkbox" checked={prescriptionForm.genericSubstitutionPermitted} onChange={(event) => setPrescriptionForm((current) => ({ ...current, genericSubstitutionPermitted: event.target.checked }))} /> Generic substitution permitted</label>
+                    <label className="flex items-center gap-1.5"><input type="checkbox" checked={prescriptionForm.refillAuthorized} onChange={(event) => setPrescriptionForm((current) => ({ ...current, refillAuthorized: event.target.checked }))} /> Refills authorized</label>
+                    <label className="flex items-center gap-1.5">Number of refills <input type="number" min="0" max="12" value={prescriptionForm.numberOfRefills} onChange={(event) => setPrescriptionForm((current) => ({ ...current, numberOfRefills: event.target.value }))} className="h-8 w-16 rounded border border-slate-200 px-2" /></label>
+                    <label className="flex items-center gap-1.5"><input type="checkbox" checked={prescriptionForm.controlledSubstance} onChange={(event) => setPrescriptionForm((current) => ({ ...current, controlledSubstance: event.target.checked }))} /> Controlled substance</label>
+                  </div>
+                  <button type="submit" disabled={prescriptionSaving} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                    {prescriptionSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pill className="h-4 w-4" />}
+                    Issue prescription
+                  </button>
+                </form>
+              )}
+
+              {prescriptions.length > 0 && (
+                <div className="mx-4 mt-3 rounded-xl border border-slate-100 bg-white p-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Issued prescriptions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {prescriptions.map((prescription) => (
+                      <div key={prescription._id || prescription.verificationId} className="rounded-lg bg-[#f0faf7] px-3 py-2 text-xs text-slate-700">
+                        <p className="font-semibold">{prescription.diagnosis || 'Prescription'} · {prescription.status || 'ISSUED'}</p>
+                        <p className="mt-1 break-all text-[10px] text-slate-500">Verification ID: {prescription.verificationId || 'Pending'}</p>
+                        {['PHARMACIST', 'HOSPITAL_ADMIN'].includes(String(account?.role || '').toUpperCase()) && prescription.status !== 'DISPENSED' && prescription.status !== 'CANCELLED' && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <input value={pharmacyName} onChange={(event) => setPharmacyName(event.target.value)} placeholder="Pharmacy name" className="h-8 min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-[10px] outline-none focus:border-[#1b7b68]" />
+                            <button type="button" onClick={() => void dispensePrescription(prescription._id)} disabled={dispensingId === prescription._id} className="rounded-lg bg-[#1b7b68] px-2.5 py-2 text-[10px] font-bold text-white disabled:opacity-50">
+                              {dispensingId === prescription._id ? 'Saving…' : 'Record dispensing'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div
                 ref={messagesContainerRef}
-                className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6"
+                onScroll={(event) => {
+                  const el = event.currentTarget;
+                  wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                  if (wasAtBottomRef.current) setNewMessageCount(0);
+                }}
+                className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6 sm:py-5"
               >
                 {loadingMessages ? (
                   <div className="flex h-full items-center justify-center">
@@ -542,7 +816,7 @@ export default function StaffPatientConsultationsPage() {
                           className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
                         >
                           <div
-                            className={`max-w-[82%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                            className={`max-w-[92%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[82%] sm:px-4 ${
                               mine
                                 ? 'rounded-br-md bg-[#1b7b68] text-white'
                                 : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'
@@ -554,9 +828,18 @@ export default function StaffPatientConsultationsPage() {
                               </p>
                             )}
 
-                            <p className="whitespace-pre-wrap text-sm leading-5">
-                              {message.messageText}
-                            </p>
+                            {message.messageText && !(message.attachmentUrl && message.messageText === message.attachmentName) && (
+                              <p className="whitespace-pre-wrap text-sm leading-5">{message.messageText}</p>
+                            )}
+                            {message.attachmentUrl && (
+                              <ChatAttachmentViewer
+                                url={message.attachmentUrl}
+                                name={message.attachmentName}
+                                mimeType={message.attachmentMimeType}
+                                size={message.attachmentSize}
+                                mine={mine}
+                              />
+                            )}
 
                             <div
                               className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${
@@ -586,9 +869,24 @@ export default function StaffPatientConsultationsPage() {
                     </p>
                   </div>
                 )}
+                {newMessageCount > 0 && (
+                  <div className="sticky bottom-2 z-20 flex justify-center pointer-events-none">
+                    <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>
+                      {newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`}
+                      <ArrowDown className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
+                {attachmentFile && (
+                  <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-2 text-xs text-slate-600">
+                    <span className="truncate">{attachmentFile.name}</span>
+                    <button type="button" onClick={() => setAttachmentFile(null)} className="font-semibold text-rose-600">Remove</button>
+                  </div>
+                )}
                 <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[#1b7b68] focus-within:bg-white">
                   <textarea
                     value={draft}
@@ -600,14 +898,28 @@ export default function StaffPatientConsultationsPage() {
                   />
 
                   <div className="flex items-center justify-between">
-                    <span className="px-2 text-[10px] text-slate-400">
-                      Press Enter to send
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <label className="flex cursor-pointer items-center gap-1.5 rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100">
+                        <Paperclip className="h-3.5 w-3.5" /> Attach
+                        <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf" onChange={(event) => {
+                          const file = event.target.files?.[0] || null;
+                          if (file && file.size > 10 * 1024 * 1024) {
+                            setError('Attachments must be 10 MB or smaller.');
+                            setAttachmentFile(null);
+                          } else {
+                            setError('');
+                            setAttachmentFile(file);
+                          }
+                          event.currentTarget.value = '';
+                        }} />
+                      </label>
+                      <span className="px-1 text-[10px] text-slate-400">Press Enter to send</span>
+                    </div>
 
                     <button
                       type="button"
                       onClick={() => void sendMessage()}
-                      disabled={!draft.trim() || sending}
+                      disabled={(!draft.trim() && !attachmentFile) || sending}
                       className="flex items-center gap-2 rounded-xl bg-[#1b7b68] px-3.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {sending ? (

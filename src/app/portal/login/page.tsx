@@ -58,7 +58,8 @@ function PatientPortalLoginForm() {
         throw new Error(payload?.message || "We couldn't sign you in. Please check your details.");
       }
       const patient = payload.data.patient;
-      setAuth({
+      const token = payload.data.token;
+      const baseAccount = {
         id: patient.portalAccountId || patient.id,
         userId: patient.portalAccountId || patient.id,
         ...(patient.hospitalId ? { hospitalId: patient.hospitalId } : {}),
@@ -68,9 +69,37 @@ function PatientPortalLoginForm() {
         lastName: patient.lastName,
         email: patient.email,
         accountType: AccountType.PATIENT_PORTAL,
-        userType: "PATIENT",
+        userType: "PATIENT" as const,
         ...(patient.mrn ? { mrn: patient.mrn } : {}),
-      }, payload.data.token);
+      };
+      setAuth(baseAccount, token);
+
+      // Restore the saved hospital/patient association after every login.
+      // Failure to restore must not block access to the patient portal.
+      try {
+        const connectionResponse = await fetch(`${API_BASE_URL}/patient-portal/auth/connection`, {
+          method: "GET",
+          headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const connectionPayload = await connectionResponse.json().catch(() => null);
+        const connection = connectionPayload?.data;
+        if (connectionResponse.ok && connectionPayload?.success && connection?.connected) {
+          setAuth({
+            ...baseAccount,
+            hospitalId: connection.hospital?.id || patient.hospitalId,
+            patientId: connection.patient?.id || patient.id,
+            name: connection.patient?.name || patient.name,
+            mrn: connection.patient?.mrn || patient.mrn,
+            hospital: connection.hospital ? {
+              _id: connection.hospital.id,
+              name: connection.hospital.name,
+            } : undefined,
+          }, token);
+        }
+      } catch {
+        // Keep the successful login; the patient can retry connection restoration later.
+      }
       router.replace("/portal");
     } catch (err: any) {
       setErrorMessage(err instanceof Error ? err.message : "We couldn't sign you in. Please check your details.");

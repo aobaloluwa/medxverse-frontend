@@ -141,18 +141,30 @@ export const communicationService = {
     return response.data;
   },
 
+  uploadAttachment: async (conversationId: string, file: File): Promise<{
+    url: string; name: string; mimeType: string; size: number; publicId?: string;
+  }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await apiClient.post(
+      `/communication/conversations/${encodeURIComponent(conversationId)}/attachments`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return response.data;
+  },
+
   sendMessage: async (
     conversationId: string,
-    body: string
+    body: string,
+    attachments: Array<{ url: string; name: string; mimeType: string; size?: number }> = [],
   ): Promise<Message> => {
     const response = await apiClient.post(
-      `/communication/conversations/${encodeURIComponent(
-        conversationId
-      )}/messages`,
+      `/communication/conversations/${encodeURIComponent(conversationId)}/messages`,
       {
         body,
-        type: 'TEXT',
-        attachments: [],
+        type: attachments.length ? (attachments[0].mimeType.startsWith('image/') ? 'IMAGE' : 'FILE') : 'TEXT',
+        attachments,
       }
     );
 

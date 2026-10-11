@@ -40,7 +40,68 @@ export interface TelemedicineMessage {
   senderModel: 'User' | 'Patient';
   messageText: string;
   attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentMimeType?: string;
+  attachmentSize?: number;
+  prescriptionId?: string;
   sentAt: string;
+}
+
+export interface TelemedicineMedication {
+  genericName: string;
+  strengthForm: string;
+  dosageFrequency: string;
+  duration: string;
+  quantity: string;
+  route: string;
+}
+
+export interface TelemedicinePrescriptionInput {
+  facilityName: string;
+  prescriberName: string;
+  professionalRegistrationNumber: string;
+  telemedicinePlatform?: string;
+  patientSnapshot: {
+    fullName: string;
+    dateOfBirth?: string;
+    patientIdNumber?: string;
+    contactNumber?: string;
+    residentialAddress?: string;
+    knownDrugAllergies?: string[];
+  };
+  diagnosis: string;
+  clinicalNotes?: string;
+  medications: TelemedicineMedication[];
+  patientInstructions?: string;
+  pharmacistInstructions?: string;
+  genericSubstitutionPermitted?: boolean;
+  refillAuthorized?: boolean;
+  numberOfRefills?: number;
+  controlledSubstance?: boolean;
+  prescriberAuthorizationId: string;
+  digitalSignature: string;
+  signedAt: string;
+}
+
+export interface TelemedicinePrescription {
+  _id: string;
+  verificationId: string;
+  status: 'ISSUED' | 'PARTIALLY_DISPENSED' | 'DISPENSED' | 'CANCELLED';
+  facilityName: string;
+  prescriberName: string;
+  professionalRegistrationNumber: string;
+  dateIssued: string;
+  patientSnapshot?: TelemedicinePrescriptionInput['patientSnapshot'];
+  diagnosis: string;
+  clinicalNotes?: string;
+  medications: TelemedicineMedication[];
+  patientInstructions?: string;
+  pharmacistInstructions?: string;
+  genericSubstitutionPermitted?: boolean;
+  refillAuthorized?: boolean;
+  numberOfRefills?: number;
+  controlledSubstance?: boolean;
+  pharmacyDispensing?: { dispensedBy?: string; pharmacyName?: string; dateDispensed?: string; notes?: string };
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -79,6 +140,34 @@ export const telemedicineService = {
   updateStatus: (id: string, status: TelemedicineStatus, clinicalNotes?: string) =>
     request<TelemedicineSession>(`/sessions/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, clinicalNotes }) }),
   getMessages: (sessionId: string) => request<TelemedicineMessage[]>(`/messages/session/${encodeURIComponent(sessionId)}`),
-  sendMessage: (sessionId: string, messageText: string) =>
-    request<TelemedicineMessage>('/messages', { method: 'POST', body: JSON.stringify({ sessionId, messageText }) }),
+  sendMessage: (sessionId: string, messageText: string, attachment?: { url: string; name: string; mimeType: string; size: number }) =>
+    request<TelemedicineMessage>('/messages', { method: 'POST', body: JSON.stringify({
+      sessionId, messageText,
+      ...(attachment ? { attachmentUrl: attachment.url, attachmentName: attachment.name, attachmentMimeType: attachment.mimeType, attachmentSize: attachment.size } : {}),
+    }) }),
+  uploadMessageAttachment: async (sessionId: string, file: File): Promise<{ url: string; name: string; mimeType: string; size: number }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const headers = getAuthHeaders();
+    delete headers['Content-Type'];
+    const response = await fetch(`${API_BASE_URL}/telemedicine/messages/session/${encodeURIComponent(sessionId)}/attachments`, {
+      method: 'POST',
+      headers,
+      body: form,
+      cache: 'no-store',
+    });
+    const raw = await response.text();
+    let payload: any = {};
+    try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = {}; }
+    if (!response.ok || payload.success === false) throw new Error(payload.message || `Attachment upload failed (${response.status})`);
+    return payload.data;
+  },
+  issuePrescription: (sessionId: string, input: TelemedicinePrescriptionInput) =>
+    request<TelemedicinePrescription>(`/sessions/${encodeURIComponent(sessionId)}/prescriptions`, { method: 'POST', body: JSON.stringify(input) }),
+  getSessionPrescriptions: (sessionId: string) =>
+    request<TelemedicinePrescription[]>(`/sessions/${encodeURIComponent(sessionId)}/prescriptions`),
+  dispensePrescription: (prescriptionId: string, input: { pharmacyName: string; pharmacistName?: string; notes?: string }) =>
+    request<TelemedicinePrescription>(`/prescriptions/${encodeURIComponent(prescriptionId)}/dispense`, { method: 'PATCH', body: JSON.stringify(input) }),
+  verifyPrescription: (verificationId: string) =>
+    request<any>(`/prescriptions/verify/${encodeURIComponent(verificationId)}`),
 };

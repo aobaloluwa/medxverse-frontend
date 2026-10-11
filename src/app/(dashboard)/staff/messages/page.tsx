@@ -1,11 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import {
+  ArrowDown,
   Check,
   Loader2,
   MessageCircle,
   MoreHorizontal,
+  Paperclip,
   Plus,
   Search,
   Send,
@@ -16,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { communicationService } from '@/services/communication.service';
+import ChatAttachmentViewer from '@/components/chat/ChatAttachmentViewer';
 
 import {
   communicationSocketManager,
@@ -27,6 +31,8 @@ import {
   Message,
   StaffSearchResult,
 } from '@/types/communication';
+
+
 
 function idOf(value: unknown): string {
   if (!value) return '';
@@ -131,6 +137,8 @@ export default function StaffMessagesPage() {
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const [draft, setDraft] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [search, setSearch] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<StaffSearchResult[]>([]);
@@ -154,6 +162,9 @@ export default function StaffMessagesPage() {
   const socketConnectedRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const wasAtBottomRef = useRef(true);
+  const previousMessageIdsRef = useRef<Set<string>>(new Set());
+  const [newMessageCount, setNewMessageCount] = useState(0);
 
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -257,6 +268,12 @@ export default function StaffMessagesPage() {
   }, [loadConversation, selectedId]);
 
   useEffect(() => {
+    setNewMessageCount(0);
+    wasAtBottomRef.current = true;
+    previousMessageIdsRef.current = new Set();
+  }, [selectedId]);
+
+  useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
@@ -265,13 +282,24 @@ export default function StaffMessagesPage() {
 
     if (!container) return;
 
+    if (!wasAtBottomRef.current) return;
     requestAnimationFrame(() => {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: 'smooth',
-      });
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     });
   }, [messages]);
+
+  useEffect(() => {
+    const previousIds = previousMessageIdsRef.current;
+    if (previousIds.size > 0 && !wasAtBottomRef.current) {
+      const incomingCount = messages.filter((message) =>
+        !previousIds.has(String(message._id)) &&
+        !String(message._id).startsWith('local-') &&
+        String(message.senderUserId) !== String(currentUserId)
+      ).length;
+      if (incomingCount > 0) setNewMessageCount((count) => count + incomingCount);
+    }
+    previousMessageIdsRef.current = new Set(messages.map((message) => String(message._id)));
+  }, [messages, currentUserId]);
 
   /*
    * REAL-TIME WEBSOCKET
@@ -408,6 +436,7 @@ export default function StaffMessagesPage() {
     if (!token || account?.userType !== 'STAFF') return;
 
     const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       void loadInbox(false);
 
       const conversationId = selectedIdRef.current;
@@ -434,7 +463,7 @@ export default function StaffMessagesPage() {
           });
         })
         .catch(() => undefined);
-    }, 4000);
+    }, 10000);
 
     return () => window.clearInterval(poll);
   }, [account?.userType, loadInbox, token]);
@@ -594,13 +623,19 @@ export default function StaffMessagesPage() {
 
   const send = async () => {
     const body = draft.trim();
+    const fileToSend = attachmentFile;
 
     if (
-      !body ||
+      (!body && !fileToSend) ||
       !selectedId ||
       sending ||
       sendingRef.current
     ) {
+      return;
+    }
+
+    if (fileToSend && fileToSend.size > 10 * 1024 * 1024) {
+      setError('Attachments must be 10 MB or smaller.');
       return;
     }
 
@@ -632,6 +667,7 @@ export default function StaffMessagesPage() {
 
     setError(null);
     setDraft('');
+    setAttachmentFile(null);
 
     setMessages((current) => [
       ...current,
@@ -654,10 +690,17 @@ export default function StaffMessagesPage() {
     setSending(true);
 
     try {
+      let uploadedAttachment: { url: string; name: string; mimeType: string; size: number } | undefined;
+      if (fileToSend) {
+        setUploadingAttachment(true);
+        uploadedAttachment = await communicationService.uploadAttachment(conversationId, fileToSend);
+      }
+
       const message =
         await communicationService.sendMessage(
           conversationId,
-          body,
+          body || (uploadedAttachment ? uploadedAttachment.name : ''),
+          uploadedAttachment ? [uploadedAttachment] : [],
         );
 
       setMessages((current) =>
@@ -702,6 +745,7 @@ export default function StaffMessagesPage() {
       );
 
       setDraft(body);
+      if (fileToSend) setAttachmentFile(fileToSend);
 
       setError(
         err?.message ||
@@ -710,11 +754,12 @@ export default function StaffMessagesPage() {
     } finally {
       sendingRef.current = false;
       setSending(false);
+      setUploadingAttachment(false);
     }
   };
 
   const onComposerKeyDown = (
-    event: React.KeyboardEvent<HTMLTextAreaElement>,
+    event: KeyboardEvent<HTMLTextAreaElement>,
   ) => {
     if (
       event.key === 'Enter' &&
@@ -947,7 +992,12 @@ export default function StaffMessagesPage() {
 
               <div
                 ref={messagesContainerRef}
-                className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6"
+                onScroll={(event) => {
+                  const el = event.currentTarget;
+                  wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                  if (wasAtBottomRef.current) setNewMessageCount(0);
+                }}
+                className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6 sm:py-5"
               >
                 {loadingMessages ? (
                   <div className="flex h-full items-center justify-center">
@@ -970,16 +1020,27 @@ export default function StaffMessagesPage() {
                           }`}
                         >
                           <div
-                            className={`max-w-[82%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                            className={`max-w-[92%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[82%] sm:px-4 ${
                               mine
                                 ? 'rounded-br-md bg-[#1b7b68] text-white'
                                 : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'
                             }`}
                           >
-                            <p className="whitespace-pre-wrap text-sm leading-5">
-                              {message.body ||
-                                `[${message.type.toLowerCase()}]`}
-                            </p>
+                            {message.body && (
+                              <p className="whitespace-pre-wrap text-sm leading-5">
+                                {message.body}
+                              </p>
+                            )}
+                            {(message.attachments || []).map((attachment, index) => (
+                              <ChatAttachmentViewer
+                                key={`${message._id}-attachment-${index}`}
+                                url={attachment.url}
+                                name={attachment.name}
+                                mimeType={attachment.mimeType}
+                                size={attachment.size}
+                                mine={mine}
+                              />
+                            ))}
 
                             <div
                               className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${
@@ -1019,6 +1080,15 @@ export default function StaffMessagesPage() {
                     </p>
                   </div>
                 )}
+                {newMessageCount > 0 && (
+                  <div className="sticky bottom-2 z-20 flex justify-center pointer-events-none">
+                    <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>
+                      {newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`}
+                      <ArrowDown className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
@@ -1034,12 +1104,41 @@ export default function StaffMessagesPage() {
                     className="w-full resize-none bg-transparent px-2 py-1 text-sm text-slate-700 outline-none placeholder:text-slate-400"
                   />
 
+                  {attachmentFile && (
+                    <div className="flex items-center justify-between gap-2 px-2 pb-2 text-xs text-slate-600">
+                      <span className="truncate">{attachmentFile.name}</span>
+                      <button type="button" onClick={() => setAttachmentFile(null)} className="font-semibold text-rose-600">Remove</button>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <label className="flex cursor-pointer items-center gap-1.5 rounded-xl px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        Attach
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] || null;
+                            if (file && file.size > 10 * 1024 * 1024) {
+                              setError('Attachments must be 10 MB or smaller.');
+                              setAttachmentFile(null);
+                            } else {
+                              setError(null);
+                              setAttachmentFile(file);
+                            }
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      {uploadingAttachment && <span className="text-xs text-slate-500">Uploading…</span>}
+                    </div>
                     <button
                       type="button"
                       onClick={() => void send()}
                       disabled={
-                        !draft.trim() || sending
+                        (!draft.trim() && !attachmentFile) || sending
                       }
                       className="flex items-center gap-2 rounded-xl bg-[#1b7b68] px-3.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
