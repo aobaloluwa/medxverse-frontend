@@ -114,6 +114,7 @@ export default function TelemedicinePage() {
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [followUpOfSessionId, setFollowUpOfSessionId] = useState('');
   const [showBooking, setShowBooking] = useState(false);
+  const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -156,7 +157,7 @@ export default function TelemedicinePage() {
 
       setSelectedId((current) => {
         if (requestedSessionExists && requestedSessionId) return requestedSessionId;
-        return items.some((item) => item._id === current) ? current : items[0]?._id || '';
+        return items.some((item) => item._id === current) ? current : ''; // Start with the chat list; user opens a session explicitly.
       });
 
       // Legacy patient links now open the dedicated patient call page.
@@ -430,7 +431,7 @@ export default function TelemedicinePage() {
         </div>
       )}
 
-      <div className="grid h-[calc(100vh-12.5rem)] min-h-[540px] max-h-[850px] grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_220px]">
+      <div className="grid h-[calc(100vh-7rem)] min-h-[600px] max-h-none grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
         <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-slate-100 bg-white`}>
           <div className="border-b border-slate-100 p-4">
             <div className="flex items-center justify-between gap-2">
@@ -497,7 +498,7 @@ export default function TelemedicinePage() {
         <section className={`${selectedId ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-[#f8fafc]`}>
           {selectedSession ? (
             <>
-              <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
+              <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white px-3 py-3 sm:px-5">
                 <div className="flex min-w-0 items-center gap-3">
                   <button type="button" onClick={() => setSelectedId('')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 md:hidden" aria-label="Back to consultations">←</button>
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68]">
@@ -512,56 +513,17 @@ export default function TelemedicinePage() {
                     </p>
                   </div>
                 </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-1.5 text-[9px] font-bold ${statusStyles[selectedSession.status]}`}>
-                  {statusLabels[selectedSession.status]}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button type="button" onClick={() => setShowSessionDetails(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#cde7e1] bg-[#f0faf7] px-2.5 py-2 text-[10px] font-bold text-[#1b7b68] lg:hidden">
+                    <CalendarClock className="h-3.5 w-3.5" /> Details
+                  </button>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1.5 text-[9px] font-bold ${statusStyles[selectedSession.status]}`}>
+                    {statusLabels[selectedSession.status]}
+                  </span>
+                </div>
               </header>
 
-              <div className="shrink-0 border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
-                <p className="text-xs font-semibold text-slate-700">{selectedSession.chiefComplaint || 'Consultation details'}</p>
-                <p className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400">
-                  <Clock3 className="h-3 w-3" /> Scheduled: {formatDateTime(selectedSession.scheduledStartTime)}
-                </p>
-                {selectedSession.actualStartTime && (
-                  <p className="mt-1 text-[10px] text-slate-500">
-                    Call started: {formatDateTime(selectedSession.actualStartTime)}
-                    {selectedSession.endTime ? ` · Ended: ${formatDateTime(selectedSession.endTime)}` : ' · In progress'}
-                    {typeof selectedSession.durationMinutes === 'number' ? ` · Duration: ${selectedSession.durationMinutes} min` : ''}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedSession.consultationType !== 'CHAT' && selectedSession.status !== 'COMPLETED' && selectedSession.status !== 'CANCELLED' && selectedSession.status !== 'NO_SHOW' && (
-                    isPatientPortal ? (
-                      <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1b7b68] px-3 py-2 text-[10px] font-bold text-white transition hover:bg-[#176c5c]">
-                        <VideoIcon className="h-3.5 w-3.5" /> Join consultation
-                      </Link>
-                    ) : (
-                      <button type="button" onClick={() => setEmbeddedCallSessionId(selectedSession._id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1b7b68] px-3 py-2 text-[10px] font-bold text-white transition hover:bg-[#176c5c]">
-                        <VideoIcon className="h-3.5 w-3.5" /> {embeddedCallSessionId === selectedSession._id ? 'Call open below' : 'Join consultation'}
-                      </button>
-                    )
-                  )}
-                  <button type="button" onClick={() => {
-                    setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));
-                    setDoctorId(idOf(selectedSession.doctorId));
-                    setConsultationType(selectedSession.consultationType);
-                    setChiefComplaint(`Follow-up consultation for ${selectedSession._id}`);
-                    setFollowUpOfSessionId(selectedSession._id);
-                    setShowBooking(true);
-                  }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-slate-600 transition hover:bg-slate-50">
-                    <Plus className="h-3.5 w-3.5" /> Book follow-up
-                  </button>
-                  {isPatientPortal && selectedSession.status === 'WAITING_ROOM' && (
-                    <button type="button" onClick={() => void changeStatus('CANCELLED')} className="rounded-lg border border-rose-200 px-3 py-2 text-[10px] font-bold text-rose-700 hover:bg-rose-50">Cancel</button>
-                  )}
-                  {!isPatientPortal && selectedSession.status === 'WAITING_ROOM' && (
-                    <button type="button" onClick={() => void changeStatus('IN_PROGRESS')} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600">Start session</button>
-                  )}
-                  {!isPatientPortal && selectedSession.status === 'IN_PROGRESS' && (
-                    <button type="button" onClick={() => void changeStatus('COMPLETED')} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600">Complete session</button>
-                  )}
-                </div>
-              </div>
+              {/* Appointment details and follow-up actions live in the context panel, keeping the chat area focused on messages. */}
 
               {!isPatientPortal && embeddedCallSessionId === selectedSession._id && selectedSession.consultationType !== 'CHAT' && (
                 <div className="shrink-0 border-b border-slate-100 bg-white p-3 sm:p-4">
@@ -581,13 +543,13 @@ export default function TelemedicinePage() {
               )}
 
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
+                {/* <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
                   <div>
                     <h3 className="text-xs font-bold text-slate-800">Consultation messages</h3>
                     <p className="mt-0.5 text-[10px] text-slate-400">Messages refresh automatically while this session is open.</p>
                   </div>
                   <MessageCircle className="h-4 w-4 text-[#1b7b68]" />
-                </div>
+                </div> */}
                 <div
                   ref={messagesScrollRef}
                   onScroll={(event) => {
@@ -738,7 +700,7 @@ export default function TelemedicinePage() {
             <div className="flex h-full flex-col items-center justify-center p-8 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]"><Stethoscope className="h-7 w-7" /></div>
               <h2 className="mt-5 text-base font-bold text-slate-800">Your virtual-care consultations</h2>
-              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">Select a consultation on the left, or book a new appointment with your care team.</p>
+              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">Choose a consultation from the list to open its messages. Your chats stay closed until you select one.</p>
               <button type="button" onClick={() => setShowBooking(true)} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white">
                 <Plus className="h-3.5 w-3.5" /> Book consultation
               </button>
@@ -746,13 +708,45 @@ export default function TelemedicinePage() {
           )}
         </section>
 
-        <aside className="hidden min-w-0 border-l border-slate-100 bg-white p-4 xl:block">
+        <aside className="hidden min-h-0 min-w-0 overflow-y-auto border-l border-slate-100 bg-white p-4 lg:block">
           {selectedSession ? (
             <div className="space-y-5">
               <div>
                 <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Consultation details</p>
                 <h3 className="mt-1 text-sm font-bold text-slate-800">{selectedSession.consultationType} session</h3>
                 <p className="mt-1 text-[10px] leading-4 text-slate-400">{formatDateTime(selectedSession.scheduledStartTime)}</p>
+              </div>
+              <div className="space-y-2">
+                {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
+                  isPatientPortal ? (
+                    <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c]">
+                      <VideoIcon className="h-4 w-4" /> Join consultation
+                    </Link>
+                  ) : (
+                    <button type="button" onClick={() => setEmbeddedCallSessionId(selectedSession._id)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c]">
+                      <VideoIcon className="h-4 w-4" /> {embeddedCallSessionId === selectedSession._id ? 'Call open below' : 'Join consultation'}
+                    </button>
+                  )
+                )}
+                <button type="button" onClick={() => {
+                  setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));
+                  setDoctorId(idOf(selectedSession.doctorId));
+                  setConsultationType(selectedSession.consultationType);
+                  setChiefComplaint(`Follow-up consultation for ${selectedSession._id}`);
+                  setFollowUpOfSessionId(selectedSession._id);
+                  setShowBooking(true);
+                }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2.5 text-xs font-bold text-[#1b7b68] transition hover:bg-[#e5f5ef]">
+                  <Plus className="h-4 w-4" /> Book follow-up
+                </button>
+                {!isPatientPortal && selectedSession.status === 'WAITING_ROOM' && (
+                  <button type="button" onClick={() => void changeStatus('IN_PROGRESS')} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Start session</button>
+                )}
+                {!isPatientPortal && selectedSession.status === 'IN_PROGRESS' && (
+                  <button type="button" onClick={() => void changeStatus('COMPLETED')} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Complete session</button>
+                )}
+                {isPatientPortal && selectedSession.status === 'WAITING_ROOM' && (
+                  <button type="button" onClick={() => void changeStatus('CANCELLED')} className="w-full rounded-xl border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50">Cancel consultation</button>
+                )}
               </div>
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Care team</p>
@@ -780,6 +774,40 @@ export default function TelemedicinePage() {
           )}
         </aside>
       </div>
+
+      {showSessionDetails && selectedSession && (
+        <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4 lg:hidden" onClick={() => setShowSessionDetails(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="session-details-title" className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border border-slate-100 bg-white p-5 shadow-2xl sm:max-w-lg sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse virtual care</p>
+                <h2 id="session-details-title" className="mt-1 text-base font-bold text-slate-800">Consultation details</h2>
+              </div>
+              <button type="button" onClick={() => setShowSessionDetails(false)} aria-label="Close consultation details" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="break-words text-sm font-semibold text-slate-800">{selectedSession.chiefComplaint || 'Consultation details'}</p>
+              <p className="flex items-start gap-2 text-xs leading-5 text-slate-500"><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /> Scheduled: {formatDateTime(selectedSession.scheduledStartTime)}</p>
+              {selectedSession.actualStartTime && <p className="text-xs leading-5 text-slate-500">Call started: {formatDateTime(selectedSession.actualStartTime)}{selectedSession.endTime ? ` · Ended: ${formatDateTime(selectedSession.endTime)}` : ' · In progress'}{typeof selectedSession.durationMinutes === 'number' ? ` · Duration: ${selectedSession.durationMinutes} min` : ''}</p>}
+              <p className="text-xs text-slate-500">Status: {statusLabels[selectedSession.status]}</p>
+            </div>
+            <div className="mt-4 space-y-2">
+              {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
+                isPatientPortal ? <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white"><VideoIcon className="h-4 w-4" /> Join consultation</Link> : <button type="button" onClick={() => { setEmbeddedCallSessionId(selectedSession._id); setShowSessionDetails(false); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white"><VideoIcon className="h-4 w-4" /> Join consultation</button>
+              )}
+              <button type="button" onClick={() => {
+                setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));
+                setDoctorId(idOf(selectedSession.doctorId));
+                setConsultationType(selectedSession.consultationType);
+                setChiefComplaint(`Follow-up consultation for ${selectedSession._id}`);
+                setFollowUpOfSessionId(selectedSession._id);
+                setShowSessionDetails(false);
+                setShowBooking(true);
+              }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-3 text-xs font-bold text-[#1b7b68]"><Plus className="h-4 w-4" /> Book follow-up</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showBooking && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm">

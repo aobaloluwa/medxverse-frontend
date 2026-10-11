@@ -163,7 +163,7 @@ export default function StaffPatientConsultationsPage() {
       const payload = unwrap<any>(response, {});
       const result = Array.isArray(payload?.sessions) ? payload.sessions : Array.isArray(payload) ? payload : [];
       setSessions(result);
-      setSelectedId((current) => current || result[0]?._id || '');
+      // Do not auto-open the first consultation; let the user choose one.
       setError('');
     } catch (cause: any) {
       setError(cause?.message || 'Unable to load patient consultations. Check your staff session and backend deployment.');
@@ -619,7 +619,7 @@ export default function StaffPatientConsultationsPage() {
         >
           {selected ? (
             <>
-              <header className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
+              <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white px-3 py-3 sm:px-5">
                 <div className="flex min-w-0 items-center gap-3">
                   <button
                     type="button"
@@ -644,7 +644,7 @@ export default function StaffPatientConsultationsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                   <button
                     type="button"
                     onClick={() => void loadMessages(selected._id, true)}
@@ -658,7 +658,7 @@ export default function StaffPatientConsultationsPage() {
                     <button
                       type="button"
                       onClick={() => void joinConsultation(selected)}
-                      className="flex items-center gap-1.5 rounded-xl bg-[#1b7b68] px-3.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c]"
+                      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1b7b68] px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c] sm:flex-none sm:px-3.5"
                     >
                       <Video className="h-3.5 w-3.5" />
                       <span>{selected.status === 'IN_PROGRESS' ? 'Join call' : 'Start consultation'}</span>
@@ -669,22 +669,22 @@ export default function StaffPatientConsultationsPage() {
                     <button
                       type="button"
                       onClick={() => void completeConsultation(selected)}
-                      className="rounded-xl border border-slate-200 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                      className="rounded-xl border border-slate-200 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50"
                     >
                       Complete
                     </button>
                   )}
-                </div>
                   {account?.role?.toUpperCase() === 'DOCTOR' && (
                     <button
                       type="button"
                       onClick={() => setShowPrescriptionForm((value) => !value)}
-                      className="flex items-center gap-1.5 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]"
+                      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-[#1b7b68] sm:flex-none sm:px-3"
                     >
                       <Pill className="h-3.5 w-3.5" />
                       Prescription
                     </button>
                   )}
+                </div>
               </header>
 
               {error && (
@@ -694,7 +694,7 @@ export default function StaffPatientConsultationsPage() {
               )}
 
               {showPrescriptionForm && (
-                <form onSubmit={issuePrescription} className="mx-4 mt-3 max-h-[48vh] overflow-y-auto rounded-2xl border border-[#cde7e1] bg-[#f8fcfb] p-4">
+                <form onSubmit={issuePrescription} className="mx-2 mt-2 max-h-[42vh] overflow-y-auto rounded-2xl border border-[#cde7e1] bg-[#f8fcfb] p-3 sm:mx-4 sm:mt-3 sm:max-h-[48vh] sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-slate-800">MHMS Telemedicine Prescription</h3>

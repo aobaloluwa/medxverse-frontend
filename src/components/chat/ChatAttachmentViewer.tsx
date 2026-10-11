@@ -105,24 +105,24 @@ export default function ChatAttachmentViewer({ url, name, mimeType, size, mine =
 
       {open && (
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-[#0b5145]/55 p-2 backdrop-blur-sm sm:p-5"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/25 p-2 backdrop-blur-sm sm:p-5"
           role="dialog" aria-modal="true" aria-label={`Preview ${name || 'attachment'}`}
           onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}
         >
-          <section className="relative flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-[#cde5dd] bg-[#f5faf8] shadow-2xl sm:max-h-[93dvh]">
-            <header className="flex min-w-0 items-center gap-3 border-b border-[#d4e9e2] bg-[#1b7b68] px-3 py-3 text-white sm:px-5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15"><FileText className="h-4 w-4" /></span>
+          <section className="relative flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[93dvh]">
+            <header className="flex min-w-0 items-center gap-3 border-b border-slate-200 bg-white px-3 py-3 text-slate-800 sm:px-5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[#1b7b68]"><FileText className="h-4 w-4" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-semibold sm:text-sm">{name || (image ? 'Image preview' : 'Document preview')}</span>
-                <span className="mt-0.5 block text-[10px] text-white/75">MedXVerse secure media viewer{sizeLabel ? ` · ${sizeLabel}` : ''}</span>
+                <span className="mt-0.5 block text-[10px] text-slate-500">MedXVerse secure media viewer{sizeLabel ? ` · ${sizeLabel}` : ''}</span>
               </span>
-              <a href={downloadUrl} download={name || (image ? 'medxverse-image' : 'medxverse-attachment')} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-white/35 bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white sm:px-3">
+              <a href={downloadUrl} download={name || (image ? 'medxverse-image' : 'medxverse-attachment')} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68] sm:px-3">
                 <Download className="h-4 w-4" /><span className="hidden sm:inline">Download</span>
               </a>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Close preview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white/90 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"><X className="h-5 w-5" /></button>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close preview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]"><X className="h-5 w-5" /></button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-auto bg-[#e8f1ed] p-2 sm:p-6">
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-2 sm:p-6">
               {image ? (
                 <div className="flex min-h-full items-center justify-center rounded-xl border border-[#d3e5dd] bg-white p-2 shadow-sm sm:p-5">
                   <img src={url} alt={name || 'Image attachment'} className="max-h-[calc(96dvh-115px)] max-w-full object-contain sm:max-h-[calc(93dvh-145px)]" />

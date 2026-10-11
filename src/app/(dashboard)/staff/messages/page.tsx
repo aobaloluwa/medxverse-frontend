@@ -193,9 +193,8 @@ export default function StaffMessagesPage() {
 
       setConversations(result.items || []);
 
-      setSelectedId(
-        (current) => current || result.items?.[0]?._id || null,
-      );
+      // Keep the conversation pane empty until the user chooses a chat.
+      // Deep links with ?conversation=... are still opened by the URL effect below.
 
       setError(null);
     } catch (err: any) {
