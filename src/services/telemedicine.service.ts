@@ -63,19 +63,18 @@ export interface TelemedicineMedication {
   route: string;
 }
 
+export interface TelemedicinePatientSnapshot {
+  fullName: string;
+  dateOfBirth?: string;
+  patientIdNumber?: string;
+  contactNumber?: string;
+  residentialAddress?: string;
+  knownDrugAllergies?: string[];
+}
+
 export interface TelemedicinePrescriptionInput {
-  facilityName: string;
-  prescriberName: string;
-  professionalRegistrationNumber: string;
+  // Identity and facility fields are resolved by the backend from the session.
   telemedicinePlatform?: string;
-  patientSnapshot: {
-    fullName: string;
-    dateOfBirth?: string;
-    patientIdNumber?: string;
-    contactNumber?: string;
-    residentialAddress?: string;
-    knownDrugAllergies?: string[];
-  };
   diagnosis: string;
   clinicalNotes?: string;
   medications: TelemedicineMedication[];
@@ -85,9 +84,7 @@ export interface TelemedicinePrescriptionInput {
   refillAuthorized?: boolean;
   numberOfRefills?: number;
   controlledSubstance?: boolean;
-  prescriberAuthorizationId: string;
   digitalSignature: string;
-  signedAt: string;
 }
 
 export interface TelemedicinePrescription {
@@ -98,7 +95,7 @@ export interface TelemedicinePrescription {
   prescriberName: string;
   professionalRegistrationNumber: string;
   dateIssued: string;
-  patientSnapshot?: TelemedicinePrescriptionInput['patientSnapshot'];
+  patientSnapshot?: TelemedicinePatientSnapshot;
   diagnosis: string;
   clinicalNotes?: string;
   medications: TelemedicineMedication[];

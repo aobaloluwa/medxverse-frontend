@@ -152,11 +152,9 @@ export default function StaffPatientConsultationsPage() {
   const [pharmacyName, setPharmacyName] = useState('');
   const [dispensingId, setDispensingId] = useState('');
   const [prescriptionForm, setPrescriptionForm] = useState({
-    facilityName: '', prescriberName: '', professionalRegistrationNumber: '',
-    patientFullName: '', patientDob: '', patientNumber: '', allergies: '',
     diagnosis: '', clinicalNotes: '', medications: [{ genericName: '', strengthForm: '', dosageFrequency: '', duration: '', quantity: '', route: '' }],
     patientInstructions: '', pharmacistInstructions: '',
-    prescriberAuthorizationId: '', digitalSignature: '',
+    digitalSignature: '',
     genericSubstitutionPermitted: false, refillAuthorized: false,
     numberOfRefills: '0', controlledSubstance: false,
   });
@@ -496,7 +494,6 @@ export default function StaffPatientConsultationsPage() {
   async function issuePrescription(event: FormEvent) {
     event.preventDefault();
     if (!selected) return;
-    const patient = typeof selected.patientId === 'string' ? undefined : selected.patientId;
     const medications = prescriptionForm.medications.map((item) => ({
       genericName: item.genericName.trim(),
       strengthForm: item.strengthForm.trim(),
@@ -513,16 +510,8 @@ export default function StaffPatientConsultationsPage() {
     setError('');
     try {
       const response = await apiClient.post(`/telemedicine/sessions/${encodeURIComponent(selected._id)}/prescriptions`, {
-        facilityName: prescriptionForm.facilityName.trim(),
-        prescriberName: prescriptionForm.prescriberName.trim(),
-        registrationNumber: prescriptionForm.professionalRegistrationNumber.trim(),
-        patientSnapshot: {
-          fullName: prescriptionForm.patientFullName.trim() || patientName(selected),
-          dateOfBirth: prescriptionForm.patientDob || undefined,
-          patientIdNumber: patient?.mrn || undefined,
-          contactNumber: prescriptionForm.patientNumber.trim() || patient?.phone || undefined,
-          knownDrugAllergies: prescriptionForm.allergies.split(',').map((item) => item.trim()).filter(Boolean),
-        },
+        // Facility, prescriber, and patient identity are derived by the backend
+        // from the authenticated doctor and the selected consultation session.
         diagnosis: prescriptionForm.diagnosis.trim(),
         clinicalNotes: prescriptionForm.clinicalNotes.trim(),
         medications,
@@ -532,7 +521,6 @@ export default function StaffPatientConsultationsPage() {
         refillAuthorized: prescriptionForm.refillAuthorized,
         numberOfRefills: Number(prescriptionForm.numberOfRefills || 0),
         controlledSubstance: prescriptionForm.controlledSubstance,
-        prescriberAuthorizationId: prescriptionForm.prescriberAuthorizationId.trim(),
         digitalSignature: prescriptionForm.digitalSignature.trim(),
         signedAt: new Date().toISOString(),
       });
@@ -778,33 +766,56 @@ export default function StaffPatientConsultationsPage() {
               )}
 
               {showPrescriptionForm && (
-                <form onSubmit={issuePrescription} className="mx-2 mt-2 max-h-[42vh] overflow-y-auto rounded-2xl border border-[#cde7e1] bg-[#f8fcfb] p-3 sm:mx-4 sm:mt-3 sm:max-h-[48vh] sm:p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">MHMS Telemedicine Prescription</h3>
-                      <p className="text-[10px] text-slate-500">Issued prescriptions are saved to the consultation and sent to the HMS EHR.</p>
+                <div
+                  className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-md sm:p-6"
+                  onClick={() => { if (!prescriptionSaving) setShowPrescriptionForm(false); }}
+                >
+                  <form
+                    onSubmit={issuePrescription}
+                    onClick={(event) => event.stopPropagation()}
+                    className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/90 shadow-2xl shadow-slate-950/20 backdrop-blur-2xl"
+                  >
+                    <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200/70 bg-white/75 px-4 py-4 sm:px-6">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68] shadow-sm">
+                          <Pill className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse · Telemedicine</p>
+                          <h3 className="mt-0.5 text-base font-bold text-slate-900 sm:text-lg">Create prescription</h3>
+                          <p className="mt-0.5 text-[11px] leading-4 text-slate-500">Saved to this consultation and sent to the HMS EHR.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={prescriptionSaving}
+                        onClick={() => setShowPrescriptionForm(false)}
+                        aria-label="Close prescription form"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/80 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
-                    <button type="button" onClick={() => setShowPrescriptionForm(false)} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+                      {error && (
+                        <div className="mb-4 rounded-xl border border-rose-200/80 bg-rose-50/90 px-3 py-2.5 text-xs leading-5 text-rose-700">
+                          {error}
+                        </div>
+                      )}
+                      <div className="mb-4 rounded-xl border border-[#1b7b68]/15 bg-[#1b7b68]/5 px-3 py-2.5 text-xs leading-5 text-slate-600">
+                        Patient, doctor, facility, registration and allergy details are linked automatically from this consultation and verified MedXVerse records.
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {([
-                      ['facilityName', 'Facility / Hospital name'],
-                      ['prescriberName', 'Prescriber full name'],
-                      ['professionalRegistrationNumber', 'Professional registration number'],
-                      ['patientFullName', 'Patient full name'],
-                      ['patientDob', 'Patient date of birth'],
-                      ['patientNumber', 'Patient contact number'],
-                      ['allergies', 'Known drug allergies (comma separated)'],
                       ['diagnosis', 'Diagnosis'],
                       ['clinicalNotes', 'Clinical notes'],
-                      ['prescriberAuthorizationId', 'Prescriber authorization ID'],
                       ['digitalSignature', 'Digital signature (typed name)'],
                     ] as const).map(([field, label]) => (
                       <label key={field} className="text-[10px] font-semibold text-slate-600">
                         {label}
                         <input
-                          required={['facilityName','prescriberName','professionalRegistrationNumber','diagnosis','prescriberAuthorizationId','digitalSignature'].includes(field)}
-                          type={field === 'patientDob' ? 'date' : 'text'}
+                          required={field === 'diagnosis' || field === 'digitalSignature'}
+                          type="text"
                           value={(prescriptionForm as any)[field]}
                           onChange={(event) => setPrescriptionForm((current) => ({ ...current, [field]: event.target.value }))}
                           className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-normal text-slate-700 outline-none focus:border-[#1b7b68]"
@@ -847,11 +858,23 @@ export default function StaffPatientConsultationsPage() {
                     <label className="flex items-center gap-1.5">Number of refills <input type="number" min="0" max="12" value={prescriptionForm.numberOfRefills} onChange={(event) => setPrescriptionForm((current) => ({ ...current, numberOfRefills: event.target.value }))} className="h-8 w-16 rounded border border-slate-200 px-2" /></label>
                     <label className="flex items-center gap-1.5"><input type="checkbox" checked={prescriptionForm.controlledSubstance} onChange={(event) => setPrescriptionForm((current) => ({ ...current, controlledSubstance: event.target.checked }))} /> Controlled substance</label>
                   </div>
-                  <button type="submit" disabled={prescriptionSaving} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
-                    {prescriptionSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pill className="h-4 w-4" />}
-                    Issue prescription
-                  </button>
-                </form>
+                    </div>
+                    <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200/70 bg-white/80 px-4 py-3 sm:flex-row sm:justify-end sm:px-6">
+                      <button
+                        type="button"
+                        disabled={prescriptionSaving}
+                        onClick={() => setShowPrescriptionForm(false)}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button type="submit" disabled={prescriptionSaving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:opacity-50">
+                        {prescriptionSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pill className="h-4 w-4" />}
+                        {prescriptionSaving ? 'Issuing prescription…' : 'Issue prescription'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
 
               <div
