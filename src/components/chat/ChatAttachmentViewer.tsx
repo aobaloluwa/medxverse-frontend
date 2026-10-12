@@ -80,7 +80,7 @@ export default function ChatAttachmentViewer({ url, name, mimeType, size, mine =
         type="button"
         onClick={() => setOpen(true)}
         aria-label={`Preview ${name || (image ? 'image' : 'attachment')}`}
-        className={`${thumbnail && image ? 'block aspect-square w-full max-w-[104px] overflow-hidden rounded-xl border border-[#d8ebe6] bg-[#f4faf8]' : 'mt-2 block w-full max-w-[min(78vw,360px)] overflow-hidden rounded-xl border sm:max-w-[360px]'} text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68] ${mine ? 'border-white/20 bg-white/10' : 'border-[#d8ebe6] bg-[#f4faf8]'}`}
+        className={`${thumbnail && image ? 'block aspect-square w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-[#d8ebe6] bg-[#f4faf8]' : 'mt-2 block w-full max-w-[min(78vw,360px)] overflow-hidden rounded-xl border sm:max-w-[360px]'} text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68] ${mine ? 'border-white/20 bg-white/10' : 'border-[#d8ebe6] bg-[#f4faf8]'}`}
       >
         {image ? (
           <div className={`relative flex items-center justify-center overflow-hidden bg-[#e8f4f0] ${thumbnail ? 'h-full w-full' : 'max-h-[min(52vh,360px)] min-h-24'}`}>

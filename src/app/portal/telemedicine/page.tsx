@@ -927,7 +927,7 @@ export default function TelemedicinePage() {
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Images className="h-4 w-4 text-[#1b7b68]" /> Media</h3>
                 {messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).length ? (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <div key={item._id} className="min-w-0"><ChatAttachmentViewer url={item.attachmentUrl!} name={item.attachmentName || 'Shared image'} mimeType={item.attachmentMimeType} size={item.attachmentSize} thumbnail /></div>)}</div>
+                  <div className="grid grid-cols-3 items-start gap-2 sm:grid-cols-4 lg:grid-cols-6">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <div key={item._id} className="min-w-0"><ChatAttachmentViewer url={item.attachmentUrl!} name={item.attachmentName || 'Shared image'} mimeType={item.attachmentMimeType} size={item.attachmentSize} thumbnail /></div>)}</div>
                 ) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No images shared in this chat yet.</p>}
               </section>
               <section>
