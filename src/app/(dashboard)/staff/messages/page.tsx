@@ -165,6 +165,7 @@ export default function StaffMessagesPage() {
   const wasAtBottomRef = useRef(true);
   const previousMessageIdsRef = useRef<Set<string>>(new Set());
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const filteredConversations = useMemo(() => {
     // Sort by the most recent conversation activity before applying search.
@@ -308,6 +309,7 @@ export default function StaffMessagesPage() {
 
   useEffect(() => {
     setNewMessageCount(0);
+    setIsAtBottom(true);
     wasAtBottomRef.current = true;
     previousMessageIdsRef.current = new Set();
   }, [selectedId]);
@@ -1034,6 +1036,7 @@ export default function StaffMessagesPage() {
                 onScroll={(event) => {
                   const el = event.currentTarget;
                   wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                  setIsAtBottom(wasAtBottomRef.current);
                   if (wasAtBottomRef.current) setNewMessageCount(0);
                 }}
                 className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6 sm:py-5"
@@ -1119,11 +1122,11 @@ export default function StaffMessagesPage() {
                     </p>
                   </div>
                 )}
-                {newMessageCount > 0 && (
+                {(!isAtBottom || newMessageCount > 0) && (
                   <div className="sticky bottom-2 z-20 flex justify-center pointer-events-none">
-                    <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>
-                      {newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`}
+                    <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); setIsAtBottom(true); wasAtBottomRef.current = true; }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
+                      {newMessageCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>}
+                      {newMessageCount > 0 ? (newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`) : 'Back to latest'}
                       <ArrowDown className="h-4 w-4" />
                     </button>
                   </div>

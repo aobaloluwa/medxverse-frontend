@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CalendarClock, Loader2, Video } from 'lucide-react';
-import JitsiMeetingEmbed from '@/components/telemedicine/JitsiMeetingEmbed';
 import PatientShell from '@/components/patient/PatientShell';
 import { useAuthStore } from '@/store/useAuthStore';
 import { telemedicineService, type TelemedicinePerson, type TelemedicineSession } from '@/services/telemedicine.service';
@@ -62,7 +61,7 @@ export default function PatientCallPage() {
   const patientName = account?.name || 'Patient';
   const doctorName = session ? personName(session.doctorId, 'Your care team') : 'Your care team';
   const ended = session && ['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status);
-  const unavailable = session && (session.consultationType === 'CHAT' || ended);
+  const unavailable = session && (session.consultationType === 'CHAT' || ended || (session.status !== 'IN_PROGRESS' && new Date(session.scheduledStartTime).getTime() > Date.now()));
 
   return (
     <PatientShell>
@@ -90,29 +89,11 @@ export default function PatientCallPage() {
         ) : session ? (
           <div className="grid gap-4 w-full">
             <div className="min-w-0">
-              {!unavailable ? (
-                <JitsiMeetingEmbed
-                  sessionId={session._id}
-                  displayName={patientName}
-                  voiceOnly={session.consultationType === 'VOICE'}
-                  onJoined={() => { /* Staff controls the official consultation status. */ }}
-                  onLeft={() => { /* Leaving the call does not automatically end a consultation. */ }}
-                  onClose={() => router.push('/portal/telemedicine')}
-                />
-              ) : (
-                <section className="flex min-h-[360px] flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-sm">
-                  <Video className="h-10 w-10 text-[#1b7b68]" />
-                  <h2 className="mt-4 text-lg font-bold text-slate-900">
-                    {session.consultationType === 'CHAT' ? 'This is a messaging consultation' : 'This consultation has ended'}
-                  </h2>
-                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                    {session.consultationType === 'CHAT'
-                      ? 'This appointment is set up for secure messages rather than a voice or video call.'
-                      : 'This consultation is no longer available to join. Return to virtual care to review your sessions.'}
-                  </p>
-                  <Link href="/portal/telemedicine" className="mt-5 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#176c5c]">Return to virtual care</Link>
-                </section>
-              )}
+              <section className="flex min-h-[160px] flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white p-6 text-center shadow-sm">
+                <Video className="h-8 w-8 text-[#1b7b68]" />
+                <h2 className="mt-3 text-base font-bold text-slate-900">Your call is managed by the persistent call interface.</h2>
+                <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">Use “Minimize call” to browse the patient portal without disconnecting.</p>
+              </section>
             </div>
           </div>
         ) : null}

@@ -99,6 +99,7 @@ interface JitsiMeetingEmbedProps {
   onJoined?: () => void;
   onLeft?: () => void;
   onClose: () => void;
+  compact?: boolean;
 }
 
 export default function JitsiMeetingEmbed({
@@ -109,12 +110,15 @@ export default function JitsiMeetingEmbed({
   onJoined,
   onLeft,
   onClose,
+  compact = false,
 }: JitsiMeetingEmbedProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<JitsiApi | null>(null);
   const onJoinedRef = useRef(onJoined);
   const onLeftRef = useRef(onLeft);
   const onCloseRef = useRef(onClose);
+  const displayNameRef = useRef(displayName);
+  const recordCallSummaryRef = useRef(recordCallSummary);
   const joinedAtRef = useRef<number | null>(null);
   const callIdRef = useRef('');
   const summarySentRef = useRef(false);
@@ -132,9 +136,11 @@ export default function JitsiMeetingEmbed({
   onJoinedRef.current = onJoined;
   onLeftRef.current = onLeft;
   onCloseRef.current = onClose;
+  displayNameRef.current = displayName;
+  recordCallSummaryRef.current = recordCallSummary;
 
   const saveCallSummary = () => {
-    if (!recordCallSummary || summarySentRef.current || !joinedAtRef.current || !callIdRef.current) {
+    if (!recordCallSummaryRef.current || summarySentRef.current || !joinedAtRef.current || !callIdRef.current) {
       return summaryPromiseRef.current || Promise.resolve();
     }
 
@@ -209,10 +215,13 @@ export default function JitsiMeetingEmbed({
           width: '100%',
           height: '100%',
           userInfo: {
-            displayName,
+            // Read the latest display name without re-creating the meeting when auth hydrates.
+            displayName: displayNameRef.current,
           },
           configOverwrite: {
-            prejoinPageEnabled: true,
+            // Resume automatically after a page reload instead of showing Jitsi's
+            // pre-join screen again. Credentials are freshly fetched for this session.
+            prejoinPageEnabled: false,
             startWithAudioMuted: false,
             startWithVideoMuted: voiceOnly,
             disableVideo: voiceOnly,
@@ -220,6 +229,7 @@ export default function JitsiMeetingEmbed({
             toolbarButtons: [],
             hideConferenceSubject: true,
             disableInviteFunctions: true,
+            backgroundColor: '#f3faf8',
           },
           interfaceConfigOverwrite: {
             MOBILE_APP_PROMO: false,
@@ -228,6 +238,8 @@ export default function JitsiMeetingEmbed({
             SHOW_POWERED_BY: false,
             TOOLBAR_BUTTONS: [],
             SETTINGS_SECTIONS: [],
+            DEFAULT_BACKGROUND: '#f3faf8',
+            DEFAULT_REMOTE_DISPLAY_NAME: 'MedXVerse participant',
           },
         });
 
@@ -235,7 +247,7 @@ export default function JitsiMeetingEmbed({
         apiRef.current = meeting;
 
         meeting.addEventListener('videoConferenceJoined', () => {
-          if (cancelled) return;
+          if (cancelled || joinedAtRef.current !== null) return;
 
           joinedAtRef.current = Date.now();
           callIdRef.current = `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -323,7 +335,9 @@ export default function JitsiMeetingEmbed({
         apiRef.current = null;
       }
     };
-  }, [sessionId, displayName, voiceOnly, recordCallSummary]);
+  // Keep the same Jitsi instance when account hydration updates the name or
+  // staff/patient summary preference; rejoining here can briefly show duplicate participants.
+  }, [sessionId, voiceOnly]);
 
   const execute = (command: string) => {
     try {
@@ -344,69 +358,77 @@ export default function JitsiMeetingEmbed({
     }
   };
 
+  useEffect(() => {
+    const handleExternalHangUp = () => { void endCall(); };
+    window.addEventListener('medxverse:hangup-call', handleExternalHangUp);
+    return () => window.removeEventListener('medxverse:hangup-call', handleExternalHangUp);
+    // The callback intentionally uses the latest refs and active API for this mounted call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   const controlClass =
-    'flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-400';
+    `flex items-center justify-center rounded-full border border-[#b9ded3] bg-white text-[#1b7b68] shadow-sm transition hover:bg-[#eaf6f2] focus:outline-none focus:ring-2 focus:ring-[#1b7b68] ${compact ? 'h-10 w-10' : 'h-11 w-11'}`;
 
   const dangerClass =
-    'flex h-11 items-center justify-center gap-2 rounded-full bg-rose-600 px-5 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300';
+    `flex items-center justify-center gap-2 rounded-full bg-red-600 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 ${compact ? 'h-10 min-w-0 px-3' : 'h-11 px-5'}`;
 
   return (
     <section
-      className="overflow-hidden rounded-2xl border border-slate-200 bg-[#07111f] shadow-lg"
+      className={`overflow-hidden border border-[#b9ded3]/70 bg-white/45 shadow-xl backdrop-blur-md ${compact ? 'rounded-2xl' : 'rounded-2xl'}`}
       aria-label={voiceOnly ? "MedXVerse voice consultation" : "MedXVerse video consultation"}
     >
-      <header className="flex items-center justify-between gap-3 border-b border-white/10 bg-[#0c1929] px-4 py-3 text-white sm:px-5">
+      <header className={`flex items-center justify-between gap-3 border-b border-[#d6ebe5] bg-white/40 text-[#174f45] backdrop-blur-md ${compact ? 'px-4 py-3' : 'px-4 py-3 sm:px-5'}`}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300">
+          <div className={`flex shrink-0 items-center justify-center rounded-xl bg-[#e5f5f0] text-[#1b7b68] ${compact ? 'h-7 w-7' : 'h-9 w-9'}`}>
             {voiceOnly ? <Phone className="h-5 w-5" /> : <Video className="h-5 w-5" />}
           </div>
 
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold">
+            <p className={`${compact ? 'text-xs' : 'text-sm'} truncate font-bold`}>
               MedXVerse Care
             </p>
-            <p className="truncate text-xs text-slate-400">
+            <p className={`${compact ? 'text-[10px]' : 'text-xs'} truncate text-slate-500`}>
               {joined
                 ? 'Connected to consultation'
                 : 'Private video consultation'}
             </p>
           </div>
 
-          <span className="hidden rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 sm:inline-flex">
+          <span className="hidden rounded-full bg-[#e5f5f0] px-2.5 py-1 text-[10px] font-semibold text-[#1b7b68] sm:inline-flex">
             <Check className="mr-1 h-3 w-3" />
             Secure session
           </span>
         </div>
 
-        <button
+        {/* <button
           type="button"
           onClick={() => void endCall()}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg text-xs font-semibold transition focus:outline-none focus:ring-2 ${compact ? 'bg-red-600 px-3 py-2 text-white hover:bg-red-700 focus:ring-red-300' : 'px-3 py-2 text-[#1b7b68] hover:bg-[#eaf6f2] hover:text-[#174f45] focus:ring-[#1b7b68]'}`}
           aria-label="Close call view"
         >
-          <X className="h-4 w-4" />
-          Close
-        </button>
+          <PhoneOff className="h-4 w-4" />
+          {compact ? 'Hang up' : 'Close'}
+        </button> */}
       </header>
 
-      <div className="relative h-[min(62vh,620px)] min-h-72 bg-[#07111f]">
+      <div className={`relative bg-white/20 ${compact ? 'h-[190px] min-h-[190px]' : 'h-[min(68vh,720px)] min-h-72'}`}>
         <div
           ref={hostRef}
           className="h-full w-full [&_iframe]:h-full [&_iframe]:w-full"
         />
 
         {loading && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#07111f] text-sm text-white">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/85 text-sm text-[#174f45] backdrop-blur-xl">
             <span className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-emerald-400" />
             <p>Preparing your MedXVerse consultation…</p>
           </div>
         )}
 
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#07111f] px-6 text-center text-sm text-white">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/90 px-6 text-center text-sm text-[#174f45] backdrop-blur-xl">
             <Video className="h-8 w-8 text-rose-400" />
             <p>{error}</p>
-            <p className="max-w-lg text-xs text-slate-400">
+            <p className="max-w-lg text-xs text-slate-500">
               Check your JaaS backend configuration and consultation
               access, then close this panel and try again.
             </p>
@@ -414,86 +436,96 @@ export default function JitsiMeetingEmbed({
         )}
       </div>
 
-      <footer className="flex flex-wrap items-center justify-center gap-3 border-t border-white/10 bg-[#0c1929] px-4 py-4 text-white">
-        <button
-          type="button"
-          className={`${controlClass} ${audioMuted ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
-          onClick={() => execute('toggleAudio')}
-          aria-label={
-            audioMuted ? 'Unmute microphone' : 'Mute microphone'
-          }
-          title={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
-        >
-          {audioMuted ? (
-            <MicOff className="h-5 w-5" />
-          ) : (
-            <Mic className="h-5 w-5" />
-          )}
-        </button>
+      <footer
+  className={
+    compact
+      ? 'grid grid-cols-4 items-center justify-items-center gap-x-2 gap-y-3 border-t border-[#d6ebe5] bg-white/40 px-4 py-4 text-[#174f45] backdrop-blur-md'
+      : 'flex flex-wrap items-center justify-center gap-3 border-t border-[#d6ebe5] bg-white/40 px-4 py-4 text-[#174f45] backdrop-blur-md'
+  }
+>
+  <button
+    type="button"
+    className={`${controlClass} self-center ${audioMuted ? 'border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100' : ''}`}
+    onClick={() => execute('toggleAudio')}
+    aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+    title={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+  >
+    {audioMuted ? (
+      <MicOff className="h-5 w-5 shrink-0" />
+    ) : (
+      <Mic className="h-5 w-5 shrink-0" />
+    )}
+  </button>
 
-        {!voiceOnly && (
-          <button
-            type="button"
-            className={`${controlClass} ${videoMuted ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
-            onClick={() => execute('toggleVideo')}
-            aria-label={videoMuted ? 'Turn camera on' : 'Turn camera off'}
-            title={videoMuted ? 'Turn camera on' : 'Turn camera off'}
-          >
-            {videoMuted ? <CameraOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
-          </button>
-        )}
+  {!voiceOnly && (
+    <button
+      type="button"
+      className={`${controlClass} self-center ${videoMuted ? 'border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100' : ''}`}
+      onClick={() => execute('toggleVideo')}
+      aria-label={videoMuted ? 'Turn camera on' : 'Turn camera off'}
+      title={videoMuted ? 'Turn camera on' : 'Turn camera off'}
+    >
+      {videoMuted ? (
+        <CameraOff className="h-5 w-5 shrink-0" />
+      ) : (
+        <Camera className="h-5 w-5 shrink-0" />
+      )}
+    </button>
+  )}
 
-        <button
-          type="button"
-          className={controlClass}
-          onClick={() => execute('toggleShareScreen')}
-          aria-label="Share screen"
-          title="Share screen"
-        >
-          <MonitorUp className="h-5 w-5" />
-        </button>
+  <button
+    type="button"
+    className={`${controlClass} self-center`}
+    onClick={() => execute('toggleShareScreen')}
+    aria-label="Share screen"
+    title="Share screen"
+  >
+    <MonitorUp className="h-5 w-5 shrink-0" />
+  </button>
 
-        <button
-          type="button"
-          className={controlClass}
-          onClick={() => execute('toggleChat')}
-          aria-label="Toggle in-call chat"
-          title="In-call chat"
-        >
-          <MessageCircle className="h-5 w-5" />
-        </button>
+  <button
+    type="button"
+    className={`${controlClass} self-center`}
+    onClick={() => execute('toggleChat')}
+    aria-label="Toggle in-call chat"
+    title="In-call chat"
+  >
+    <MessageCircle className="h-5 w-5 shrink-0" />
+  </button>
 
-        <button
-          type="button"
-          className={controlClass}
-          onClick={() => execute('toggleTileView')}
-          aria-label="Change video layout"
-          title="Change video layout"
-        >
-          <Settings2 className="h-5 w-5" />
-        </button>
+  <button
+    type="button"
+    className={`${controlClass} self-center`}
+    onClick={() => execute('toggleTileView')}
+    aria-label="Change video layout"
+    title="Change video layout"
+  >
+    <Settings2 className="h-5 w-5 shrink-0" />
+  </button>
 
-        <button
-          type="button"
-          className={controlClass}
-          onClick={() => execute('toggleFilmStrip')}
-          aria-label="Toggle participants view"
-          title="Participants view"
-        >
-          <Maximize className="h-5 w-5" />
-        </button>
+  <button
+    type="button"
+    className={`${controlClass} self-center`}
+    onClick={() => execute('toggleFilmStrip')}
+    aria-label="Toggle participants view"
+    title="Participants view"
+  >
+    <Maximize className="h-5 w-5 shrink-0" />
+  </button>
 
-        <button
-          type="button"
-          className={dangerClass}
-          onClick={endCall}
-        >
-          <PhoneOff className="h-4 w-4" />
-          End call
-        </button>
-      </footer>
+  <button
+    type="button"
+    className={`${dangerClass} self-center ${compact ? 'col-span-2 w-full justify-self-stretch gap-1.5 px-2 text-xs' : ''}`}
+    onClick={() => void endCall()}
+    aria-label="End call"
+    title="End call"
+  >
+    <PhoneOff className="h-4 w-4 shrink-0" />
+    <span className="whitespace-nowrap">End call</span>
+  </button>
+</footer>
 
-      <div className="border-t border-white/5 bg-[#0c1929] px-4 pb-3 text-center text-[10px] text-slate-500">
+      <div className="border-t border-[#e1efeb] bg-white/80 px-4 pb-3 text-center text-[10px] text-slate-500">
         {displayName}
         {roomName ? ` · ${roomName}` : ''}
       </div>

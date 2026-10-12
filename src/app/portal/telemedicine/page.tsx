@@ -28,7 +28,7 @@ import {
 import { useAuthStore } from '@/store/useAuthStore';
 import PatientShell from '@/components/patient/PatientShell';
 import ChatAttachmentViewer from '@/components/chat/ChatAttachmentViewer';
-import JitsiMeetingEmbed from '@/components/telemedicine/JitsiMeetingEmbed';
+import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
 import {
   telemedicineService,
   type TelemedicineMessage,
@@ -101,12 +101,12 @@ export default function TelemedicinePage() {
   const [patients, setPatients] = useState<TelemedicinePerson[]>([]);
   const [doctors, setDoctors] = useState<TelemedicinePerson[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [embeddedCallSessionId, setEmbeddedCallSessionId] = useState('');
   const [messages, setMessages] = useState<TelemedicineMessage[]>([]);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const wasAtBottomRef = useRef(true);
   const previousMessageIdsRef = useRef<Set<string>>(new Set());
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const [messageText, setMessageText] = useState('');
   const [messageAttachment, setMessageAttachment] = useState<File | null>(null);
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
@@ -126,6 +126,12 @@ export default function TelemedicinePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const callTimeReady = (session: TelemedicineSession) => session.status === 'IN_PROGRESS' || new Date(session.scheduledStartTime).getTime() <= Date.now();
+  const openSessionCall = (session: TelemedicineSession) => {
+    if (!callTimeReady(session)) return;
+    openTelemedicineCall(session._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(session._id)}`, `${session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push);
+  };
+
   const selectedSession = useMemo(
     () => sessions.find((session) => session._id === selectedId) || null,
     [sessions, selectedId],
@@ -139,10 +145,11 @@ export default function TelemedicinePage() {
         createdAt?: string;
         lastMessage?: { sentAt?: string; createdAt?: string };
       };
-      const raw = record.lastMessageAt || record.lastMessage?.sentAt || record.lastMessage?.createdAt;
-      // Sort by the last chat message only, never by booking, session, or update dates.
-      const time = raw ? new Date(raw).getTime() : 0;
-      return Number.isFinite(time) ? time : 0;
+      const candidates = [record.lastMessageAt, record.lastMessage?.sentAt, record.lastMessage?.createdAt, record.createdAt]
+        .map((value) => value ? new Date(value).getTime() : 0)
+        .filter((value) => Number.isFinite(value));
+      // A newly booked consultation is activity too; an older consultation moves up again when a new message arrives.
+      return Math.max(0, ...candidates);
     };
     return activityTime(b) - activityTime(a);
   }), [sessions]);
@@ -201,13 +208,18 @@ export default function TelemedicinePage() {
         return items.some((item) => item._id === current) ? current : ''; // Start with the chat list; user opens a session explicitly.
       });
 
-      // Legacy patient links now open the dedicated patient call page.
-      // Staff can continue to use the embedded call experience in this workspace.
+      // Legacy session links now use the same persistent call route for both portals.
       if (requestedSessionExists && requestedSessionId) {
         if (isPatientPortal) {
           router.replace(`/portal/call/${encodeURIComponent(requestedSessionId)}`);
         } else {
-          setEmbeddedCallSessionId(requestedSessionId);
+          const requested = items.find((item) => item._id === requestedSessionId);
+          openTelemedicineCall(
+            requestedSessionId,
+            `/staff/call/${encodeURIComponent(requestedSessionId)}`,
+            `${requested?.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`,
+            router.push,
+          );
         }
       }
     } catch (err) {
@@ -289,6 +301,7 @@ export default function TelemedicinePage() {
 
   useEffect(() => {
     setNewMessageCount(0);
+    setIsAtBottom(true);
     wasAtBottomRef.current = true;
     previousMessageIdsRef.current = new Set();
   }, [selectedId]);
@@ -595,23 +608,7 @@ export default function TelemedicinePage() {
 
               {/* Appointment details and follow-up actions live in the context panel, keeping the chat area focused on messages. */}
 
-              {!isPatientPortal && embeddedCallSessionId === selectedSession._id && selectedSession.consultationType !== 'CHAT' && (
-                <div className="shrink-0 border-b border-slate-100 bg-white p-3 sm:p-4">
-                  <JitsiMeetingEmbed
-                    sessionId={selectedSession._id}
-                    displayName={isPatientPortal ? `Patient ${displayName(selectedSession.patientId)}` : `Dr. ${displayName(selectedSession.doctorId)}`}
-                    voiceOnly={selectedSession.consultationType === 'VOICE'}
-                  recordCallSummary={!isPatientPortal}
-                    onJoined={() => {
-                      if (!isPatientPortal && selectedSession.status === 'WAITING_ROOM') void changeStatus('IN_PROGRESS');
-                    }}
-                    onLeft={() => {
-                      if (!isPatientPortal && selectedSession.status === 'IN_PROGRESS') void changeStatus('COMPLETED');
-                    }}
-                    onClose={() => setEmbeddedCallSessionId('')}
-                  />
-                </div>
-              )}
+              {/* The root-level persistent call host owns the Jitsi session so navigation never disconnects it. */}
 
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 {/* <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
@@ -626,6 +623,7 @@ export default function TelemedicinePage() {
                   onScroll={(event) => {
                     const el = event.currentTarget;
                     wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                  setIsAtBottom(wasAtBottomRef.current);
                     if (wasAtBottomRef.current) setNewMessageCount(0);
                   }}
                   className="relative min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4"
@@ -780,11 +778,11 @@ export default function TelemedicinePage() {
 
                     </div>
                   )}
-                  {newMessageCount > 0 && (
+                  {(!isAtBottom || newMessageCount > 0) && (
                     <div className="sticky bottom-2 z-20 flex justify-center pointer-events-none">
-                      <button type="button" onClick={() => { const el = messagesScrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
-                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>
-                        {newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`}
+                      <button type="button" onClick={() => { const el = messagesScrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); setIsAtBottom(true); wasAtBottomRef.current = true; }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
+                        {newMessageCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>}
+                        {newMessageCount > 0 ? (newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`) : 'Back to latest'}
                         <ArrowDown className="h-4 w-4" />
                       </button>
                     </div>
@@ -858,12 +856,12 @@ export default function TelemedicinePage() {
               <div className="space-y-2">
                 {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
                   isPatientPortal ? (
-                    <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c]">
-                      {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}
-                    </Link>
+                    <button type="button" disabled={!callTimeReady(selectedSession)} onClick={() => openSessionCall(selectedSession)} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
+                      {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}
+                    </button>
                   ) : (
-                    <button type="button" onClick={() => setEmbeddedCallSessionId(selectedSession._id)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c]">
-                      <VideoIcon className="h-4 w-4" /> {embeddedCallSessionId === selectedSession._id ? 'Call open below' : 'Join consultation'}
+                    <button type="button" disabled={!callTimeReady(selectedSession)} onClick={() => openTelemedicineCall(selectedSession._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(selectedSession._id)}`, `${selectedSession.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push)} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
+                      <VideoIcon className="h-4 w-4" /> {!callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'}
                     </button>
                   )
                 )}
@@ -929,12 +927,12 @@ export default function TelemedicinePage() {
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Images className="h-4 w-4 text-[#1b7b68]" /> Media</h3>
                 {messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).length ? (
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 text-[10px] text-slate-600 hover:border-[#1b7b68]"><img src={item.attachmentUrl} alt={item.attachmentName || 'Shared image'} className="h-20 w-full rounded-lg object-cover" /><span className="mt-1 block truncate">{item.attachmentName || 'Image'}</span></a>)}</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <div key={item._id} className="min-w-0"><ChatAttachmentViewer url={item.attachmentUrl!} name={item.attachmentName || 'Shared image'} mimeType={item.attachmentMimeType} size={item.attachmentSize} thumbnail /></div>)}</div>
                 ) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No images shared in this chat yet.</p>}
               </section>
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><FileText className="h-4 w-4 text-[#1b7b68]" /> Documents</h3>
-                <div className="space-y-2">{messages.filter((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 hover:border-[#1b7b68]"><FileText className="h-5 w-5 shrink-0 text-[#1b7b68]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{item.attachmentName || 'Shared document'}</span><span className="text-[10px] text-slate-400">{formatTime(item.sentAt)}</span></a>)}</div>
+                <div className="space-y-2">{messages.filter((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <div key={item._id} className="min-w-0"><ChatAttachmentViewer url={item.attachmentUrl!} name={item.attachmentName || 'Shared document'} mimeType={item.attachmentMimeType} size={item.attachmentSize} /></div>)}</div>
                 {!messages.some((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')) && <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No documents shared in this chat yet.</p>}
               </section>
               <section>
@@ -964,7 +962,7 @@ export default function TelemedicinePage() {
             </div>
             <div className="mt-4 space-y-2">
               {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
-                isPatientPortal ? <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}</Link> : <button type="button" onClick={() => { setEmbeddedCallSessionId(selectedSession._id); setShowSessionDetails(false); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}</button>
+                <button type="button" disabled={!callTimeReady(selectedSession)} onClick={() => { openTelemedicineCall(selectedSession._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(selectedSession._id)}`, `${selectedSession.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push); setShowSessionDetails(false); }} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}</button>
               )}
               <button type="button" onClick={() => {
                 setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));

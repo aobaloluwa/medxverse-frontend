@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CalendarClock, Loader2, Video } from 'lucide-react';
-import JitsiMeetingEmbed from '@/components/telemedicine/JitsiMeetingEmbed';
 import { useAuthStore } from '@/store/useAuthStore';
 import { telemedicineService, type TelemedicineSession } from '@/services/telemedicine.service';
 
@@ -72,8 +71,8 @@ export default function StaffCallPage() {
               {new Date(session.scheduledStartTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
             </span>
             {session.status === 'WAITING_ROOM' && (
-              <button type="button" disabled={statusSaving} onClick={() => void updateStatus('IN_PROGRESS')} className="rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#176c5c] disabled:opacity-60">
-                {statusSaving ? 'Updating…' : 'Start consultation'}
+              <button type="button" disabled={statusSaving || new Date(session.scheduledStartTime).getTime() > Date.now()} onClick={() => void updateStatus('IN_PROGRESS')} className="rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#176c5c] disabled:opacity-60">
+                {statusSaving ? 'Updating…' : new Date(session.scheduledStartTime).getTime() > Date.now() ? `Available at ${new Date(session.scheduledStartTime).toLocaleString()}` : 'Start consultation'}
               </button>
             )}
             {session.status === 'IN_PROGRESS' && (
@@ -94,23 +93,11 @@ export default function StaffCallPage() {
       ) : session ? (
         <div className="grid gap-4 w-full">
           <div className="min-w-0">
-            {session.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status) ? (
-              <JitsiMeetingEmbed
-                sessionId={session._id}
-                displayName={displayName}
-                voiceOnly={session.consultationType === 'VOICE'}
-                recordCallSummary
-                onJoined={() => { if (session.status === 'WAITING_ROOM') void updateStatus('IN_PROGRESS'); }}
-                onLeft={() => { /* A participant leaving does not necessarily mean the consultation is complete. */ }}
-                onClose={() => router.push('/staff/messages/consultations')}
-              />
-            ) : (
-              <section className="flex min-h-[360px] flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-sm">
-                <Video className="h-10 w-10 text-[#1b7b68]" />
-                <h2 className="mt-4 text-lg font-bold text-slate-900">Video call unavailable</h2>
-                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{session.consultationType === 'CHAT' ? 'This is a messages-only consultation. Voice and video calls are disabled.' : 'This consultation has ended. The patient can book a follow-up consultation.'}</p>
-              </section>
-            )}
+            <section className="flex min-h-[160px] flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white p-6 text-center shadow-sm">
+              <Video className="h-8 w-8 text-[#1b7b68]" />
+              <p className="mt-3 text-sm font-semibold text-slate-800">Your call is managed by the persistent call interface.</p>
+              <p className="mt-1 text-xs text-slate-500">Use “Minimize call” to browse the portal without disconnecting.</p>
+            </section>
           </div>
         </div>
       ) : null}

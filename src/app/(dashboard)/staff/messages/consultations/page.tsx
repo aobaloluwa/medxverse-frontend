@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowDown,
   ArrowLeft,
@@ -26,6 +27,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import ChatAttachmentViewer from '@/components/chat/ChatAttachmentViewer';
+import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
 import { API_BASE_URL } from '@/services/appointment.service';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -135,11 +137,13 @@ function avatarLetters(name: string): string {
 export default function StaffPatientConsultationsPage() {
   const { account } = useAuthStore();
   const currentUserId = account?.userId || account?.id || account?._id || '';
+  const router = useRouter();
   const selectedIdRef = useRef('');
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const wasAtBottomRef = useRef(true);
   const previousMessageIdsRef = useRef<Set<string>>(new Set());
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const [sessions, setSessions] = useState<Consultation[]>([]);
   const sessionsRef = useRef<Consultation[]>([]);
@@ -280,6 +284,7 @@ export default function StaffPatientConsultationsPage() {
 
   useEffect(() => {
     setNewMessageCount(0);
+    setIsAtBottom(true);
     wasAtBottomRef.current = true;
     previousMessageIdsRef.current = new Set();
   }, [selectedId]);
@@ -322,11 +327,12 @@ export default function StaffPatientConsultationsPage() {
   const filteredSessions = useMemo(() => {
     const newestFirst = [...sessions].sort((a, b) => {
       const activityTime = (session: Consultation) => {
-        const raw = session.lastMessageAt || session.lastMessage?.sentAt || session.lastMessage?.createdAt;
-        // Consultations without chat messages sort below conversations with messages;
-        // booking/scheduling timestamps must never determine chat-list order.
-        const time = raw ? new Date(raw).getTime() : 0;
-        return Number.isFinite(time) ? time : 0;
+        const record = session as Consultation & { createdAt?: string; updatedAt?: string };
+        const candidates = [record.lastMessageAt, record.lastMessage?.sentAt, record.lastMessage?.createdAt, record.createdAt]
+          .map((value) => value ? new Date(value).getTime() : 0)
+          .filter((value) => Number.isFinite(value));
+        // Sort by latest chat activity, but keep newly created consultations visible even before their first message.
+        return Math.max(0, ...candidates);
       };
       return activityTime(b) - activityTime(a);
     });
@@ -433,6 +439,10 @@ export default function StaffPatientConsultationsPage() {
       setError('This consultation has ended. Book a follow-up consultation to start a new session.');
       return;
     }
+    if (session.status !== 'IN_PROGRESS' && new Date(session.scheduledStartTime).getTime() > Date.now()) {
+      setError(`This call is not available yet. It can be joined at ${new Date(session.scheduledStartTime).toLocaleString()}.`);
+      return;
+    }
 
     if (!session.meetingRoomId && !session.meetingUrl) {
       setError('This consultation has no meeting link or room ID. Ask the administrator to check the consultation setup.');
@@ -455,8 +465,8 @@ export default function StaffPatientConsultationsPage() {
       }
     }
 
-    // Open the staff-specific call interface inside the existing staff layout.
-    window.location.assign(`/staff/call/${encodeURIComponent(session._id)}`);
+    // Open the call in its own named window so it can remain connected while staff navigate the main app.
+    openTelemedicineCall(session._id, `/staff/call/${encodeURIComponent(session._id)}`, `${session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push);
   };
 
   const completeConsultation = async (session: Consultation) => {
@@ -746,11 +756,13 @@ export default function StaffPatientConsultationsPage() {
                   {selected.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
                     <button
                       type="button"
+                      disabled={selected.status !== 'IN_PROGRESS' && new Date(selected.scheduledStartTime).getTime() > Date.now()}
+                      title={selected.status !== 'IN_PROGRESS' && new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available at ${new Date(selected.scheduledStartTime).toLocaleString()}` : 'Join consultation'}
                       onClick={() => void joinConsultation(selected)}
-                      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1b7b68] px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c] sm:flex-none sm:px-3.5"
+                      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1b7b68] px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300 sm:flex-none sm:px-3.5"
                     >
                       {selected.consultationType === 'VOICE' ? <Phone className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-                      <span>{selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
+                      <span>{selected.status !== 'IN_PROGRESS' && new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available ${new Date(selected.scheduledStartTime).toLocaleString()}` : selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
                     </button>
                   )}
 
@@ -899,6 +911,7 @@ export default function StaffPatientConsultationsPage() {
                 onScroll={(event) => {
                   const el = event.currentTarget;
                   wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                  setIsAtBottom(wasAtBottomRef.current);
                   if (wasAtBottomRef.current) setNewMessageCount(0);
                 }}
                 className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6 sm:py-5"
@@ -1057,11 +1070,11 @@ export default function StaffPatientConsultationsPage() {
                     </p>
                   </div>
                 )}
-                {newMessageCount > 0 && (
+                {(!isAtBottom || newMessageCount > 0) && (
                   <div className="sticky bottom-2 z-20 flex justify-center pointer-events-none">
-                    <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>
-                      {newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`}
+                    <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setNewMessageCount(0); setIsAtBottom(true); wasAtBottomRef.current = true; }} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#b8ddd2] bg-white px-4 py-2 text-xs font-bold text-[#176b5b] shadow-lg transition hover:bg-[#eff9f5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68]">
+                      {newMessageCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b7b68] px-1 text-[10px] text-white">{newMessageCount}</span>}
+                      {newMessageCount > 0 ? (newMessageCount === 1 ? '1 new message' : `${newMessageCount} new messages`) : 'Back to latest'}
                       <ArrowDown className="h-4 w-4" />
                     </button>
                   </div>
@@ -1263,12 +1276,12 @@ export default function StaffPatientConsultationsPage() {
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Images className="h-4 w-4 text-[#1b7b68]" /> Media</h3>
                 {messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).length ? (
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 text-[10px] text-slate-600 hover:border-[#1b7b68]"><img src={item.attachmentUrl} alt={item.attachmentName || 'Shared image'} className="h-20 w-full rounded-lg object-cover" /><span className="mt-1 block truncate">{item.attachmentName || 'Image'}</span></a>)}</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <div key={item._id} className="min-w-0"><ChatAttachmentViewer url={item.attachmentUrl!} name={item.attachmentName || 'Shared image'} mimeType={item.attachmentMimeType} size={(item as any).attachmentSize} thumbnail /></div>)}</div>
                 ) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No images shared in this chat yet.</p>}
               </section>
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><FileText className="h-4 w-4 text-[#1b7b68]" /> Documents</h3>
-                <div className="space-y-2">{messages.filter((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <a key={item._id} href={item.attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 hover:border-[#1b7b68]"><FileText className="h-5 w-5 shrink-0 text-[#1b7b68]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{item.attachmentName || 'Shared document'}</span><span className="text-[10px] text-slate-400">{item.sentAt ? formatTime(item.sentAt) : ''}</span></a>)}</div>
+                <div className="space-y-2">{messages.filter((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')).map((item) => <div key={item._id} className="min-w-0"><ChatAttachmentViewer url={item.attachmentUrl!} name={item.attachmentName || 'Shared document'} mimeType={item.attachmentMimeType} size={(item as any).attachmentSize} /></div>)}</div>
                 {!messages.some((item) => item.attachmentUrl && !String(item.attachmentMimeType || '').startsWith('image/')) && <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No documents shared in this chat yet.</p>}
               </section>
               <section>

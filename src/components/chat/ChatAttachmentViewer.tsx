@@ -9,6 +9,7 @@ type ChatAttachmentViewerProps = {
   mimeType?: string;
   size?: number;
   mine?: boolean;
+  thumbnail?: boolean;
 };
 
 function isImage(mimeType?: string, name?: string) {
@@ -32,7 +33,7 @@ function attachmentDownloadUrl(url: string) {
   return url;
 }
 
-export default function ChatAttachmentViewer({ url, name, mimeType, size, mine = false }: ChatAttachmentViewerProps) {
+export default function ChatAttachmentViewer({ url, name, mimeType, size, mine = false, thumbnail = false }: ChatAttachmentViewerProps) {
   const [open, setOpen] = useState(false);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [textError, setTextError] = useState(false);
@@ -79,13 +80,13 @@ export default function ChatAttachmentViewer({ url, name, mimeType, size, mine =
         type="button"
         onClick={() => setOpen(true)}
         aria-label={`Preview ${name || (image ? 'image' : 'attachment')}`}
-        className={`mt-2 block w-full max-w-[min(78vw,360px)] overflow-hidden rounded-xl border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68] sm:max-w-[360px] ${mine ? 'border-white/20 bg-white/10' : 'border-[#d8ebe6] bg-[#f4faf8]'}`}
+        className={`${thumbnail && image ? 'block aspect-square w-full max-w-[104px] overflow-hidden rounded-xl border border-[#d8ebe6] bg-[#f4faf8]' : 'mt-2 block w-full max-w-[min(78vw,360px)] overflow-hidden rounded-xl border sm:max-w-[360px]'} text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1b7b68] ${mine ? 'border-white/20 bg-white/10' : 'border-[#d8ebe6] bg-[#f4faf8]'}`}
       >
         {image ? (
-          <div className="relative flex max-h-[min(52vh,360px)] min-h-24 items-center justify-center overflow-hidden bg-[#e8f4f0]">
-            <img src={url} alt={name || 'Image attachment'} loading="lazy" className="block max-h-[min(52vh,360px)] w-full object-contain" />
+          <div className={`relative flex items-center justify-center overflow-hidden bg-[#e8f4f0] ${thumbnail ? 'h-full w-full' : 'max-h-[min(52vh,360px)] min-h-24'}`}>
+            <img src={url} alt={name || 'Image attachment'} loading="lazy" className={`block w-full ${thumbnail ? 'h-full object-cover' : 'max-h-[min(52vh,360px)] object-contain'}`} />
             <span className="absolute inset-0 flex items-center justify-center bg-[#0b5145]/0 transition-colors hover:bg-[#0b5145]/15">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-white bg-[#1b7b68]/95 text-white shadow-lg"><Eye className="h-5 w-5" /></span>
+              <span className={`flex items-center justify-center rounded-full border border-white bg-[#1b7b68]/95 text-white shadow-lg ${thumbnail ? 'h-8 w-8' : 'h-12 w-12'}`}><Eye className={thumbnail ? 'h-4 w-4' : 'h-5 w-5'} /></span>
             </span>
           </div>
         ) : (
@@ -100,7 +101,7 @@ export default function ChatAttachmentViewer({ url, name, mimeType, size, mine =
             <Eye className="h-4 w-4 shrink-0 opacity-75" />
           </span>
         )}
-        {image && <span className={`block truncate px-2 py-1 text-[10px] ${mine ? 'bg-[#0b5145]/50 text-white' : 'bg-[#e1f1ec] text-[#14594e]'}`}>{name || 'Image'}</span>}
+        {image && !thumbnail && <span className={`block truncate px-2 py-1 text-[10px] ${mine ? 'bg-[#0b5145]/50 text-white' : 'bg-[#e1f1ec] text-[#14594e]'}`}>{name || 'Image'}</span>}
       </button>
 
       {open && (
