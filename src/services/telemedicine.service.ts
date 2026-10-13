@@ -30,6 +30,10 @@ export interface TelemedicineSession {
   chiefComplaint?: string;
   clinicalNotes?: string;
   actualStartTime?: string;
+  callStartedAt?: string;
+  callEndedAt?: string;
+  activeCallId?: string;
+  callInitiatorType?: 'PATIENT' | 'STAFF';
   endTime?: string;
   durationMinutes?: number;
 }
@@ -44,12 +48,13 @@ export interface TelemedicineMessage {
   attachmentMimeType?: string;
   attachmentSize?: number;
   prescriptionId?: string;
-  messageType?: 'TEXT' | 'CALL_SUMMARY';
+  messageType?: 'TEXT' | 'CALL_STARTED' | 'CALL_SUMMARY';
   callSummary?: {
     callId: string;
     callType: 'VIDEO' | 'VOICE';
     durationSeconds: number;
     participantCount: number;
+    missedCall?: boolean;
   };
   sentAt: string;
 }
@@ -143,8 +148,10 @@ export const telemedicineService = {
     request<TelemedicineSession>('/sessions', { method: 'POST', body: JSON.stringify(input) }),
   updateStatus: (id: string, status: TelemedicineStatus, clinicalNotes?: string) =>
     request<TelemedicineSession>(`/sessions/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, clinicalNotes }) }),
+  markCallStarted: (sessionId: string, callId: string) =>
+    request<TelemedicineSession>(`/sessions/${encodeURIComponent(sessionId)}/call-started`, { method: 'POST', body: JSON.stringify({ callId }) }),
   getMessages: (sessionId: string) => request<TelemedicineMessage[]>(`/messages/session/${encodeURIComponent(sessionId)}`),
-  recordCallSummary: (sessionId: string, input: { callId: string; durationSeconds: number; participantCount: number }) =>
+  recordCallSummary: (sessionId: string, input: { callId: string; durationSeconds: number; participantCount: number; missedCall?: boolean }) =>
     request<TelemedicineMessage>(`/sessions/${encodeURIComponent(sessionId)}/call-summary`, {
       method: 'POST',
       body: JSON.stringify(input),

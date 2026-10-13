@@ -21,6 +21,7 @@ import {
   FlaskConical,
   Siren,
   HeartPulse,
+  Baby,
   BadgeDollarSign,
   ClipboardList,
 } from 'lucide-react';
@@ -75,6 +76,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hms/outpatients',
       icon: Stethoscope,
       moduleKey: 'outpatient',
+    },
+
+    {
+      label: 'Obstetrics & Gynecology',
+      href: '/hms/obgyn',
+      icon: Baby,
     },
 
     {

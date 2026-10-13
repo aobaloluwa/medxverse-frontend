@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BellRing, Phone, PhoneCall, Video, X } from 'lucide-react';
+import { BellRing, Phone, PhoneCall, PhoneOff, Video, X } from 'lucide-react';
 import {
   openTelemedicineCall,
   ACTIVE_TELEMEDICINE_CALL_KEY,
@@ -23,6 +23,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 type CallTrackedSession = TelemedicineSession & {
   callStartedAt?: string | Date | null;
   callEndedAt?: string | Date | null;
+  callInitiatorType?: 'PATIENT' | 'STAFF';
 };
 
 type IncomingCall = {
@@ -55,7 +56,7 @@ export default function IncomingTelemedicineCallBanner() {
   const account = useAuthStore((state) => state.account);
 
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
-  const [dismissedSessionId, setDismissedSessionId] = useState('');
+  const [dismissedCallId, setDismissedCallId] = useState('');
 
   const pollingRef = useRef(false);
   const knownIncomingRef = useRef('');
@@ -63,7 +64,7 @@ export default function IncomingTelemedicineCallBanner() {
   const userType = account?.userType;
 
   const checkForIncomingCall = useCallback(async () => {
-    if (!userType || pollingRef.current) return;
+    if ((userType !== 'PATIENT' && userType !== 'STAFF') || pollingRef.current) return;
 
     pollingRef.current = true;
 
@@ -80,10 +81,13 @@ export default function IncomingTelemedicineCallBanner() {
 
           return (
             session.consultationType !== 'CHAT' &&
-            session.status === 'IN_PROGRESS' &&
+            !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status) &&
             startedAt > 0 &&
             (!endedAt || endedAt < startedAt) &&
             !session.endTime &&
+            // The caller sees the active-call panel; only the other participant
+            // should receive the incoming-call banner.
+            session.callInitiatorType && session.callInitiatorType !== userType &&
             session._id !== activeCall?.sessionId
           );
         })
@@ -107,49 +111,20 @@ export default function IncomingTelemedicineCallBanner() {
         const startedAt = getTimestamp(session.callStartedAt);
         const endedAt = getTimestamp(session.callEndedAt);
 
-        // Ignore calls that have already ended according to their timestamps.
-        if (endedAt && startedAt && endedAt >= startedAt) {
-          continue;
-        }
-
-        try {
-          const messages = await telemedicineService.getMessages(session._id);
-
-          const hasSummaryForLatestCall = messages.some((message) => {
-            if (
-              message.messageType !== 'CALL_SUMMARY' ||
-              !message.callSummary ||
-              startedAt <= 0
-            ) {
-              return false;
-            }
-
-            return getTimestamp(message.sentAt) >= startedAt;
-          });
-
-          if (hasSummaryForLatestCall) {
-            continue;
-          }
-        } catch {
-          // Message history may temporarily be unavailable.
-          // Continue using the authorized live-session information.
-        }
+        if (endedAt && startedAt && endedAt >= startedAt) continue;
 
         found = {
           session,
-          title:
-            session.consultationType === 'VOICE'
-              ? 'Voice call'
-              : 'Video call',
+          title: session.consultationType === 'VOICE' ? 'Voice call' : 'Video call',
         };
-
         break;
       }
 
+      const foundCallId = found ? (found.session.activeCallId || found.session.callStartedAt || found.session._id) : '';
+      if (found && foundCallId === dismissedCallId) found = null;
       setIncoming(found);
-
-      if (found && knownIncomingRef.current !== found.session._id) {
-        knownIncomingRef.current = found.session._id;
+      if (found && knownIncomingRef.current !== foundCallId) {
+        knownIncomingRef.current = foundCallId;
 
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
           try {
@@ -208,7 +183,7 @@ export default function IncomingTelemedicineCallBanner() {
     } finally {
       pollingRef.current = false;
     }
-  }, [router, userType]);
+  }, [dismissedCallId, router, userType]);
 
   useEffect(() => {
     void checkForIncomingCall();
@@ -230,15 +205,17 @@ export default function IncomingTelemedicineCallBanner() {
   }, [checkForIncomingCall]);
 
   useEffect(() => {
-    if (!incoming || dismissedSessionId !== incoming.session._id) {
+    if (!incoming || dismissedCallId !== (incoming.session.activeCallId || incoming.session.callStartedAt || incoming.session._id)) {
       return;
     }
 
     // Hide a dismissed notification for this session.
     setIncoming(null);
-  }, [dismissedSessionId, incoming]);
+  }, [dismissedCallId, incoming]);
 
-  if (!incoming || dismissedSessionId === incoming.session._id) {
+  const currentCallId = incoming ? (incoming.session.activeCallId || incoming.session.callStartedAt || incoming.session._id) : '';
+
+  if (!incoming || dismissedCallId === currentCallId) {
     return null;
   }
 
@@ -249,6 +226,7 @@ export default function IncomingTelemedicineCallBanner() {
   }/call/${encodeURIComponent(incoming.session._id)}`;
 
   const accept = () => {
+    setDismissedCallId(currentCallId);
     setIncoming(null);
 
     openTelemedicineCall(
@@ -265,7 +243,7 @@ export default function IncomingTelemedicineCallBanner() {
     <aside
       role="alert"
       aria-live="assertive"
-      className="fixed inset-x-3 top-3 z-260 mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-[#b9ded3] bg-white/95 p-3 shadow-2xl backdrop-blur-xl sm:inset-x-6 sm:top-5 sm:gap-4 sm:p-4"
+      className="fixed inset-x-3 top-3 z-[9999] mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-[#b9ded3] bg-white/95 p-3 shadow-2xl backdrop-blur-xl sm:inset-x-6 sm:top-5 sm:gap-4 sm:p-4"
     >
       <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]">
         {incoming.session.consultationType === 'VOICE' ? (
@@ -285,28 +263,60 @@ export default function IncomingTelemedicineCallBanner() {
         </p>
 
         <p className="mt-0.5 text-xs text-slate-600">
-          Your consultation is calling. Join when you&apos;re ready.
+          Someone is calling you. Answer or decline.
         </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={accept}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#176c5c] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/40 sm:px-4"
+          aria-label="Answer incoming call"
+        >
+          {incoming.session.consultationType === 'VOICE' ? (
+            <Phone className="h-4 w-4" />
+          ) : (
+            <Video className="h-4 w-4" />
+          )}
+          Answer
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const callId = incoming.session.activeCallId;
+            // Declining ends this ringing attempt and converts its chat activity
+            // to a red Missed call entry for both participants.
+            if (callId) {
+              void telemedicineService.recordCallSummary(incoming.session._id, {
+                callId,
+                durationSeconds: 0,
+                participantCount: 0,
+                missedCall: true,
+              }).catch((error) => {
+                console.error('Unable to decline telemedicine call:', error);
+              }).finally(() => {
+                setDismissedCallId(currentCallId);
+                setIncoming(null);
+              });
+            } else {
+              setDismissedCallId(currentCallId);
+              setIncoming(null);
+            }
+          }}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 sm:px-4"
+          aria-label="Decline incoming call"
+        >
+          <PhoneOff className="h-4 w-4" />
+          Decline
+        </button>
       </div>
 
       <button
         type="button"
-        onClick={accept}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#176c5c] sm:px-4"
-      >
-        {incoming.session.consultationType === 'VOICE' ? (
-          <Phone className="h-4 w-4" />
-        ) : (
-          <Video className="h-4 w-4" />
-        )}
-        Answer
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setDismissedSessionId(incoming.session._id)}
+        onClick={() => setDismissedCallId(currentCallId)}
         aria-label="Dismiss incoming call notification"
-        title="Dismiss"
+        title="Dismiss notification"
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
       >
         <X className="h-4 w-4" />

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthSessionGuard from "@/components/auth/AuthSessionGuard";
 import PersistentTelemedicineCall from "@/components/telemedicine/PersistentTelemedicineCall";
+import IncomingTelemedicineCallBanner from "@/components/telemedicine/IncomingTelemedicineCallBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthSessionGuard />
         {children}
         <PersistentTelemedicineCall />
+        <IncomingTelemedicineCallBanner />
       </body>
     </html>
   );

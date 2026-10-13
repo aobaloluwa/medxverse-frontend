@@ -190,7 +190,7 @@ export default function PersistentTelemedicineCall() {
           </div>
         )}
         <div className={isCallRoute ? 'w-full' : 'max-h-[370px] overflow-hidden'}>
-          {error ? <div role="alert" className="rounded-2xl bg-white p-6 text-sm text-rose-700">{error}</div> : callAvailable && session ? <JitsiMeetingEmbed key={activeCall.sessionId} sessionId={session._id} displayName={displayName} voiceOnly={session.consultationType === 'VOICE'} compact={!isCallRoute} recordCallSummary={!isPatient} onJoined={() => { if (!isPatient && session.status === 'WAITING_ROOM') void telemedicineService.updateStatus(session._id, 'IN_PROGRESS').then(setSession).catch(() => undefined); }} onClose={clearCall} /> : <div className="rounded-2xl bg-white/90 p-6 text-sm text-slate-600 backdrop-blur-xl">{session ? 'This consultation is no longer available to join.' : 'Loading your secure consultation…'}</div>}
+          {error ? <div role="alert" className="rounded-2xl bg-white p-6 text-sm text-rose-700">{error}</div> : callAvailable && session ? <JitsiMeetingEmbed key={activeCall.sessionId} sessionId={session._id} displayName={displayName} voiceOnly={session.consultationType === 'VOICE'} compact={!isCallRoute} recordCallSummary={true} onJoined={() => { if (!isPatient && session.status === 'WAITING_ROOM') void telemedicineService.updateStatus(session._id, 'IN_PROGRESS').then(setSession).catch(() => undefined); }} onClose={clearCall} /> : <div className="rounded-2xl bg-white/90 p-6 text-sm text-slate-600 backdrop-blur-xl">{session ? 'This consultation is no longer available to join.' : 'Loading your secure consultation…'}</div>}
         </div>
       </div>
     </div>

@@ -140,20 +140,27 @@ export default function JitsiMeetingEmbed({
   recordCallSummaryRef.current = recordCallSummary;
 
   const saveCallSummary = () => {
-    if (!recordCallSummaryRef.current || summarySentRef.current || !joinedAtRef.current || !callIdRef.current) {
+    if (!recordCallSummaryRef.current || summarySentRef.current || !callIdRef.current) {
       return summaryPromiseRef.current || Promise.resolve();
     }
 
-    // Set the guard synchronously so Jitsi's leave/close events cannot create
-    // duplicate summaries for the same call.
+    // Record even a call attempt that ended before the local user finished
+    // joining Jitsi. Otherwise the chat would remain stuck on "Calling…".
+    // Set the guard synchronously so leave/close events cannot create duplicates.
     summarySentRef.current = true;
-    const durationSeconds = Math.max(0, Math.floor((Date.now() - joinedAtRef.current) / 1000));
-    const participantCount = Math.max(1, maxParticipantCountRef.current);
+    const joinedAt = joinedAtRef.current;
+    const durationSeconds = joinedAt
+      ? Math.max(0, Math.floor((Date.now() - joinedAt) / 1000))
+      : 0;
+    const participantCount = joinedAt
+      ? Math.max(1, maxParticipantCountRef.current)
+      : 0;
     summaryPromiseRef.current = telemedicineService
       .recordCallSummary(sessionId, {
         callId: callIdRef.current,
         durationSeconds,
         participantCount,
+        missedCall: !joinedAt || maxParticipantCountRef.current < 2,
       })
       .then(() => undefined)
       .catch((cause) => {
@@ -181,6 +188,18 @@ export default function JitsiMeetingEmbed({
       summaryPromiseRef.current = null;
 
       try {
+        // Publish the ringing state before the meeting fully loads so the other
+        // participant can see a banner and a Calling… item in the chat.
+        const requestedCallId = `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        callIdRef.current = requestedCallId;
+        try {
+          const callSession = await telemedicineService.markCallStarted(sessionId, requestedCallId);
+          if (callSession.activeCallId) callIdRef.current = callSession.activeCallId;
+        } catch (callStartError) {
+          // Calling should remain usable if activity logging is temporarily down.
+          console.error('Unable to publish telemedicine call start:', callStartError);
+        }
+
         const credentials =
           await telemedicineService.getMeetingToken(sessionId);
 
@@ -250,7 +269,7 @@ export default function JitsiMeetingEmbed({
           if (cancelled || joinedAtRef.current !== null) return;
 
           joinedAtRef.current = Date.now();
-          callIdRef.current = `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          if (!callIdRef.current) callIdRef.current = `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
           summarySentRef.current = false;
           maxParticipantCountRef.current = Math.max(1, remoteParticipantsRef.current.size + 1);
           setJoined(true);
