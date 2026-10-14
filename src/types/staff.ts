@@ -457,6 +457,7 @@ export interface IStaff {
 
   createdAt: ISODateString;
   updatedAt: ISODateString;
+  consultationFee?: number;
 }
 
 /* =========================================================
@@ -505,6 +506,7 @@ export interface CreateStaffDTO {
 
   incidents?: IIncidentRecord[];
   communications?: IStaffCommunication[];
+  consultationFee?: number;
 }
 
 /* =========================================================

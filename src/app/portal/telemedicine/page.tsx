@@ -110,10 +110,16 @@ export default function TelemedicinePage() {
   const [messageText, setMessageText] = useState('');
   const [messageAttachment, setMessageAttachment] = useState<File | null>(null);
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [labRequests, setLabRequests] = useState<any[]>([]);
+  const [paymentSummary, setPaymentSummary] = useState<any | null>(null);
+  const [showLabRequest, setShowLabRequest] = useState(false);
+  const [savingLabRequest, setSavingLabRequest] = useState(false);
+  const [labForm, setLabForm] = useState({ testName: '', testCategory: 'CLINICAL_CHEMISTRY', sampleType: 'Blood', priority: 'ROUTINE' as 'ROUTINE' | 'URGENT' | 'STAT', notes: '' });
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null);
   const [showChatProfile, setShowChatProfile] = useState(false);
   const [patientId, setPatientId] = useState('');
   const [doctorId, setDoctorId] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
   const [consultationType, setConsultationType] = useState<Exclude<ConsultationType, 'CHAT'>>('VIDEO');
   const [scheduledStartTime, setScheduledStartTime] = useState('');
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -122,6 +128,8 @@ export default function TelemedicinePage() {
   const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [paymentStartingFor, setPaymentStartingFor] = useState('');
+  const paymentReturnHandledRef = useRef(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -131,6 +139,9 @@ export default function TelemedicinePage() {
     if (!callTimeReady(session)) return;
     openTelemedicineCall(session._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(session._id)}`, `${session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push);
   };
+
+  const availableDepartments = useMemo(() => Array.from(new Set(doctors.map((doctor) => String(doctor.department || doctor.specialization || doctor.specialties?.find((item) => item.isPrimary)?.specialty || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [doctors]);
+  const filteredDoctors = useMemo(() => departmentFilter ? doctors.filter((doctor) => String(doctor.department || doctor.specialization || doctor.specialties?.find((item) => item.isPrimary)?.specialty || '').trim() === departmentFilter) : doctors, [doctors, departmentFilter]);
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session._id === selectedId) || null,
@@ -168,13 +179,15 @@ export default function TelemedicinePage() {
     setError('');
 
     try {
-      const [directory, sessionResult] = await Promise.all([
-        telemedicineService.getDirectory(),
-        telemedicineService.getSessions(),
-      ]);
-      setPatients(directory.patients || []);
-      setDoctors(directory.doctors || []);
-      const sessionItems = sessionResult.sessions || [];
+      // Load consultations first. A directory failure (for example, a permissions
+      // issue with doctor lookup) must not prevent existing patient chats from loading.
+      const sessionResult = await telemedicineService.getSessions();
+      const directory = await telemedicineService.getDirectory().catch(() => null);
+      if (directory) {
+        setPatients(Array.isArray(directory.patients) ? directory.patients : []);
+        setDoctors(Array.isArray(directory.doctors) ? directory.doctors : []);
+      }
+      const sessionItems = Array.isArray(sessionResult.sessions) ? sessionResult.sessions : [];
 
       // Resolve each session's latest message before the consultation list is shown.
       // Do not wait for the user to open a session to learn its real chat timestamp.
@@ -199,8 +212,9 @@ export default function TelemedicinePage() {
       const requestedSessionId = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('sessionId')
         : null;
+      const isPaymentReturn = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('payment') === 'return';
       const requestedSessionExists = Boolean(
-        requestedSessionId && items.some((item) => item._id === requestedSessionId)
+        !isPaymentReturn && requestedSessionId && items.some((item) => item._id === requestedSessionId)
       );
 
       setSelectedId((current) => {
@@ -241,10 +255,60 @@ export default function TelemedicinePage() {
     }
   }, [isAuthenticated, isPatientPortal, isPatientLinked, refresh]);
 
+  // Doctor directory booking links can preselect a doctor and open the booking form.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const requestedDoctorId = params.get('doctorId');
+    if (!requestedDoctorId) return;
+    setDoctorId(requestedDoctorId);
+    if (params.get('book') === '1') setShowBooking(true);
+  }, []);
+
+  useEffect(() => {
+    const role = String(account?.role || '').toUpperCase();
+    const canManagePayments = !isPatientPortal && ['HOSPITAL_ADMIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(role);
+    if (!isAuthenticated || !canManagePayments) { setPaymentSummary(null); return; }
+    let active = true;
+    telemedicineService.getPaymentSummary().then((data) => { if (active) setPaymentSummary(data); }).catch(() => { if (active) setPaymentSummary(null); });
+    return () => { active = false; };
+  }, [isAuthenticated, isPatientPortal, account?.role]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isPatientPortal || typeof window === 'undefined' || paymentReturnHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') !== 'return') return;
+    const reference = params.get('reference') || params.get('trxref') || '';
+    const sessionId = params.get('sessionId') || '';
+    if (!reference || !sessionId) {
+      paymentReturnHandledRef.current = true;
+      setError('Payment return details were incomplete. Open the consultation and retry payment verification.');
+      return;
+    }
+    paymentReturnHandledRef.current = true;
+    telemedicineService.verifyPayment(sessionId, reference)
+      .then(async () => {
+        setNotice('Payment verified successfully. Your consultation is now unlocked.');
+        // Select the exact session that was just paid, even when this patient
+        // already has older conversations with the same doctor.
+        setSelectedId(sessionId);
+        await refresh();
+        setSelectedId(sessionId);
+        router.replace('/portal/telemedicine');
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'We could not verify the payment yet. If you were charged, retry verification shortly.');
+      });
+  }, [isAuthenticated, isPatientPortal, refresh, router]);
+
   useEffect(() => {
     setMessages([]);
     setPrescriptions([]);
     if (!selectedId) {
+      return;
+    }
+    if (isPatientPortal && Boolean(selectedSession?.paymentStatus && !['PAID', 'NOT_REQUIRED'].includes(selectedSession.paymentStatus))) {
+      setMessages([]);
       return;
     }
 
@@ -262,9 +326,18 @@ export default function TelemedicinePage() {
             return timeOf(b) - timeOf(a);
           })[0];
           if (latestMessage) {
-            setSessions((current) => current.map((item) => item._id === selectedId
-              ? { ...item, lastMessageAt: latestMessage.sentAt || (latestMessage as any).createdAt || (item as any).lastMessageAt } as TelemedicineSession
-              : item));
+            const latestMessageAt = latestMessage.sentAt || (latestMessage as any).createdAt;
+            if (latestMessageAt) {
+              setSessions((current) => {
+                const existing = current.find((item) => item._id === selectedId) as (TelemedicineSession & { lastMessageAt?: string }) | undefined;
+                // Do not create a new sessions array on every poll when the timestamp
+                // has not changed; doing so used to restart the chat-loading effect.
+                if (!existing || existing.lastMessageAt === latestMessageAt) return current;
+                return current.map((item) => item._id === selectedId
+                  ? { ...item, lastMessageAt: latestMessageAt } as TelemedicineSession
+                  : item);
+              });
+            }
           }
         }
       } catch (err) {
@@ -282,10 +355,11 @@ export default function TelemedicinePage() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [selectedId]);
+  }, [selectedId, isPatientPortal, selectedSession?.paymentStatus]);
 
   useEffect(() => {
     if (!selectedId) { setPrescriptions([]); return; }
+    if (isPatientPortal && Boolean(selectedSession?.paymentStatus && !['PAID', 'NOT_REQUIRED'].includes(selectedSession.paymentStatus))) { setPrescriptions([]); return; }
     let active = true;
     const loadPrescriptions = () => {
       telemedicineService.getSessionPrescriptions(selectedId)
@@ -297,7 +371,17 @@ export default function TelemedicinePage() {
       if (document.visibilityState === 'visible') loadPrescriptions();
     }, 10000);
     return () => { active = false; window.clearInterval(interval); };
-  }, [selectedId]);
+  }, [selectedId, isPatientPortal, selectedSession?.paymentStatus]);
+
+  useEffect(() => {
+    if (!selectedId) { setLabRequests([]); return; }
+    if (selectedSession?.paymentStatus && !['PAID', 'NOT_REQUIRED'].includes(selectedSession.paymentStatus)) { setLabRequests([]); return; }
+    let active = true;
+    const load = () => telemedicineService.getLabRequests(selectedId).then((items) => { if (active) setLabRequests(Array.isArray(items) ? items : []); }).catch(() => { if (active) setLabRequests([]); });
+    void load();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [selectedId, selectedSession?.paymentStatus]);
 
   useEffect(() => {
     setNewMessageCount(0);
@@ -327,6 +411,26 @@ export default function TelemedicinePage() {
     previousMessageIdsRef.current = new Set(messages.map((message) => String(message._id)));
   }, [messages, account?.patientId, account?.userId, account?.id, isPatientPortal]);
 
+  async function startPayment(sessionId: string) {
+    if (!sessionId || paymentStartingFor) return;
+    setPaymentStartingFor(sessionId);
+    setError('');
+    try {
+      const payment = await telemedicineService.initializePayment(sessionId);
+      if (payment.paid || payment.paymentStatus === 'PAID') {
+        setNotice('This consultation is already paid.');
+        await refresh();
+        return;
+      }
+      if (!payment.authorizationUrl) throw new Error('The payment provider did not return a checkout link. Please try again.');
+      window.location.assign(payment.authorizationUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to start payment. Please try again.');
+    } finally {
+      setPaymentStartingFor('');
+    }
+  }
+
   async function createSession(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -342,7 +446,7 @@ export default function TelemedicinePage() {
         chiefComplaint: chiefComplaint.trim(),
         ...(followUpOfSessionId ? { followUpOfSessionId } : {}),
       });
-      setSessions((current) => [created, ...current]);
+      setSessions((current) => [created, ...current.filter((item) => item._id !== created._id)]);
       setSelectedId(created._id);
       setShowBooking(false);
       setPatientId('');
@@ -350,6 +454,12 @@ export default function TelemedicinePage() {
       setChiefComplaint('');
       setScheduledStartTime('');
       setFollowUpOfSessionId('');
+      if (isPatientPortal && created.paymentStatus === 'PENDING') {
+        setNotice('Consultation reserved. Complete payment to unlock chat and the call.');
+        await startPayment(created._id);
+        await refresh();
+        return;
+      }
       setNotice('Consultation booked and waiting-room session created.');
       await refresh();
     } catch (err) {
@@ -357,6 +467,24 @@ export default function TelemedicinePage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function submitLabRequest(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedSession || isPatientPortal || String(account?.role || '').toUpperCase() !== 'DOCTOR') return;
+    if (!labForm.testName.trim() || !labForm.sampleType.trim()) { setError('Enter the requested test and sample type.'); return; }
+    setSavingLabRequest(true);
+    setError('');
+    try {
+      await telemedicineService.createLabRequest(selectedSession._id, labForm);
+      const refreshed = await telemedicineService.getLabRequests(selectedSession._id);
+      setLabRequests(Array.isArray(refreshed) ? refreshed : []);
+      setLabForm({ testName: '', testCategory: 'CLINICAL_CHEMISTRY', sampleType: 'Blood', priority: 'ROUTINE', notes: '' });
+      setShowLabRequest(false);
+      setNotice('Investigation request sent to the hospital laboratory.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the laboratory request.');
+    } finally { setSavingLabRequest(false); }
   }
 
   async function sendMessage(event: FormEvent) {
@@ -514,6 +642,16 @@ export default function TelemedicinePage() {
         </div>
       )}
 
+      {paymentSummary?.summary && (
+        <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Hospital administration</p><h2 className="mt-1 text-sm font-bold text-slate-800">Virtual consultation payments</h2></div><span className="text-[10px] text-slate-400">Amounts in NGN</span></div>
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            {[['Paid', paymentSummary.summary.paid], ['Pending', paymentSummary.summary.pending], ['Failed', paymentSummary.summary.failed], ['Refunded', paymentSummary.summary.refunded]].map(([label, value]: any) => <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-3"><p className="text-[10px] font-semibold text-slate-500">{label}</p><p className="mt-1 text-lg font-extrabold text-slate-800">{Number(value?.count || 0).toLocaleString()}</p><p className="mt-1 text-[10px] text-slate-500">₦{Number(value?.totalAmount || 0).toLocaleString()}</p></div>)}
+          </div>
+          {Array.isArray(paymentSummary.recent) && paymentSummary.recent.length > 0 && <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[520px] text-left text-[10px]"><thead><tr className="border-b border-slate-100 text-slate-400"><th className="py-2 pr-3 font-semibold">Patient</th><th className="py-2 pr-3 font-semibold">Doctor</th><th className="py-2 pr-3 font-semibold">Date</th><th className="py-2 pr-3 font-semibold">Amount</th><th className="py-2 font-semibold">Status</th></tr></thead><tbody>{paymentSummary.recent.slice(0, 8).map((item: any) => <tr key={String(item._id)} className="border-b border-slate-50"><td className="py-2 pr-3">{displayName(item.patientId)}</td><td className="py-2 pr-3">{displayName(item.doctorId)}</td><td className="py-2 pr-3">{formatDateTime(item.scheduledStartTime)}</td><td className="py-2 pr-3">₦{Number(item.consultationFee || 0).toLocaleString()}</td><td className="py-2">{String(item.paymentStatus || '').replace(/_/g, ' ')}</td></tr>)}</tbody></table></div>}
+        </section>
+      )}
+
       <div className="grid h-[calc(100dvh-6.5rem)] min-h-[460px] max-h-none grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:h-[calc(100vh-7rem)] md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
         <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-slate-100 bg-white`}>
           <div className="border-b border-slate-100 p-4">
@@ -561,6 +699,8 @@ export default function TelemedicinePage() {
                       <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-bold ${statusStyles[session.status]}`}>
                         {statusLabels[session.status]}
                       </span>
+                      {isPatientPortal && session.paymentStatus === 'PENDING' && <span className="ml-1 mt-2 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[9px] font-bold text-amber-700">Payment due</span>}
+                      {isPatientPortal && session.paymentStatus === 'PAID' && <span className="ml-1 mt-2 inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold text-emerald-700">Paid</span>}
                     </div>
                   </button>
                 );
@@ -819,7 +959,15 @@ export default function TelemedicinePage() {
                     </div>
                   )}
                 </div>
-                {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) ? (
+                {isPatientPortal && selectedSession.paymentStatus === 'PENDING' ? (
+                  <div className="shrink-0 border-t border-amber-100 bg-amber-50 px-4 py-5 text-center">
+                    <p className="text-sm font-bold text-amber-900">Payment required to unlock this consultation</p>
+                    <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-amber-800">Your appointment is reserved. Complete secure payment and we will verify it with the payment provider before enabling chat and calls.</p>
+                    <button type="button" disabled={paymentStartingFor === selectedSession._id} onClick={() => void startPayment(selectedSession._id)} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">
+                      {paymentStartingFor === selectedSession._id && <Loader2 className="h-4 w-4 animate-spin" />} Pay ₦{Number(selectedSession.consultationFee || 0).toLocaleString()} securely
+                    </button>
+                  </div>
+                ) : !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) ? (
                 <form onSubmit={sendMessage} className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
                   {messageAttachment && (
                     <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-2 text-xs text-slate-600">
@@ -885,9 +1033,16 @@ export default function TelemedicinePage() {
                 <p className="mt-1 text-[10px] leading-4 text-slate-400">{formatDateTime(selectedSession.scheduledStartTime)}</p>
               </div>
               <div className="space-y-2">
+                {isPatientPortal && selectedSession.paymentStatus === 'PENDING' && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-bold text-amber-900">Payment pending</p>
+                    <p className="mt-1 text-[10px] leading-4 text-amber-800">₦{Number(selectedSession.consultationFee || 0).toLocaleString()} · {selectedSession.paymentCurrency || 'NGN'}</p>
+                    <button type="button" disabled={paymentStartingFor === selectedSession._id} onClick={() => void startPayment(selectedSession._id)} className="mt-2 w-full rounded-lg bg-[#1b7b68] px-3 py-2 text-xs font-bold text-white disabled:opacity-60">{paymentStartingFor === selectedSession._id ? 'Opening checkout…' : 'Pay securely'}</button>
+                  </div>
+                )}
                 {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
                   isPatientPortal ? (
-                    <button type="button" disabled={!callTimeReady(selectedSession)} onClick={() => openSessionCall(selectedSession)} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
+                    <button type="button" disabled={!callTimeReady(selectedSession) || (isPatientPortal && selectedSession.paymentStatus === 'PENDING')} onClick={() => openSessionCall(selectedSession)} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
                       {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}
                     </button>
                   ) : (
@@ -922,6 +1077,13 @@ export default function TelemedicinePage() {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[10px] font-bold text-[#1b7b68]">{initials(`Dr. ${displayName(selectedSession.doctorId)}`)}</div>
                   <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-800">Dr. {displayName(selectedSession.doctorId)}</p><p className="text-[10px] text-slate-400">Consulting doctor</p></div>
                 </div>
+              </div>
+              <div className="rounded-2xl border border-slate-100 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Laboratory requests</p>
+                  {!isPatientPortal && String(account?.role || '').toUpperCase() === 'DOCTOR' && <button type="button" onClick={() => setShowLabRequest(true)} className="rounded-lg bg-[#e8f5f3] px-2 py-1.5 text-[9px] font-bold text-[#1b7b68]">Request test</button>}
+                </div>
+                {labRequests.length ? <div className="mt-3 space-y-2">{labRequests.slice(0, 4).map((item: any) => <div key={String(item._id)} className="rounded-xl bg-slate-50 p-2.5"><p className="text-xs font-semibold text-slate-700">{item.testName}</p><p className="mt-1 text-[10px] text-slate-500">{String(item.testCategory || '').replace(/_/g, ' ')} · {String(item.status || 'PENDING').replace(/_/g, ' ')}</p></div>)}</div> : <p className="mt-2 text-[10px] leading-4 text-slate-400">No investigations have been requested for this consultation.</p>}
               </div>
               <div className="rounded-2xl border border-slate-100 p-4">
                 <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Session status</p>
@@ -1009,6 +1171,27 @@ export default function TelemedicinePage() {
         </div>
       )}
 
+      {showLabRequest && selectedSession && !isPatientPortal && String(account?.role || '').toUpperCase() === 'DOCTOR' && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm">
+          <section role="dialog" aria-modal="true" aria-labelledby="lab-request-title" className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Clinical workflow</p><h2 id="lab-request-title" className="mt-1 text-lg font-bold text-slate-800">Request laboratory investigation</h2></div>
+              <button type="button" onClick={() => setShowLabRequest(false)} aria-label="Close laboratory request" className="rounded-xl p-2 text-slate-400 hover:bg-slate-50"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={submitLabRequest} className="space-y-4 p-5">
+              <label className="block text-xs font-semibold text-slate-700">Test / investigation name<input required maxLength={200} value={labForm.testName} onChange={(event) => setLabForm((current) => ({ ...current, testName: event.target.value }))} placeholder="e.g. Full blood count" className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#1b7b68]" /></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-semibold text-slate-700">Laboratory department<select value={labForm.testCategory} onChange={(event) => setLabForm((current) => ({ ...current, testCategory: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#1b7b68]"><option value="HAEMATOLOGY">Haematology</option><option value="CLINICAL_CHEMISTRY">Clinical chemistry</option><option value="MICROBIOLOGY">Microbiology</option><option value="PARASITOLOGY">Parasitology</option><option value="IMMUNOLOGY_SEROLOGY">Immunology / serology</option><option value="HISTOPATHOLOGY">Histopathology</option><option value="CYTOLOGY">Cytology</option><option value="MOLECULAR_DIAGNOSTICS">Molecular diagnostics</option><option value="BLOOD_BANK">Blood bank</option><option value="GENETICS">Genetics</option></select></label>
+                <label className="block text-xs font-semibold text-slate-700">Sample type<input required maxLength={100} value={labForm.sampleType} onChange={(event) => setLabForm((current) => ({ ...current, sampleType: event.target.value }))} placeholder="Blood, urine, swab…" className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#1b7b68]" /></label>
+              </div>
+              <label className="block text-xs font-semibold text-slate-700">Priority<select value={labForm.priority} onChange={(event) => setLabForm((current) => ({ ...current, priority: event.target.value as 'ROUTINE' | 'URGENT' | 'STAT' }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#1b7b68]"><option value="ROUTINE">Routine</option><option value="URGENT">Urgent</option><option value="STAT">STAT — immediate</option></select></label>
+              <label className="block text-xs font-semibold text-slate-700">Clinical notes (optional)<textarea maxLength={2000} rows={3} value={labForm.notes} onChange={(event) => setLabForm((current) => ({ ...current, notes: event.target.value }))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-[#1b7b68]" /></label>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowLabRequest(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600">Cancel</button><button type="submit" disabled={savingLabRequest} className="inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{savingLabRequest && <Loader2 className="h-4 w-4 animate-spin" />} Send lab request</button></div>
+            </form>
+          </section>
+        </div>
+      )}
+
       {showBooking && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm">
           <div role="dialog" aria-modal="true" aria-labelledby="booking-title" className="my-8 w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl">
@@ -1029,12 +1212,24 @@ export default function TelemedicinePage() {
                   </select>
                 </label>
               )}
+              <label className="text-xs font-semibold text-slate-700">Department / specialty
+                <select value={departmentFilter} onChange={(event) => { setDepartmentFilter(event.target.value); setDoctorId(''); }} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#1b7b68]">
+                  <option value="">All departments and specialties</option>
+                  {availableDepartments.map((department) => <option key={department} value={department}>{department}</option>)}
+                </select>
+              </label>
               <label className="text-xs font-semibold text-slate-700">Doctor / specialist
                 <select required value={doctorId} onChange={(event) => setDoctorId(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#1b7b68]">
                   <option value="">Choose doctor</option>
-                  {doctors.map((doctor) => <option key={doctor._id} value={doctor._id}>{displayName(doctor)}{doctor.specialization ? ` · ${doctor.specialization}` : doctor.department ? ` · ${doctor.department}` : ''}</option>)}
+                  {filteredDoctors.map((doctor) => { const specialty = doctor.specialization || doctor.specialties?.map((item) => item.specialty).filter(Boolean).join(', ') || doctor.department || doctor.role || 'Doctor'; const fee = Number(doctor.consultationFee || 0); return <option key={doctor._id} value={doctor._id}>{displayName(doctor)} · {specialty}{fee > 0 ? ` · ₦${fee.toLocaleString()}` : ''}</option>; })}
                 </select>
               </label>
+              {isPatientPortal && doctorId && (
+                <div className="rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2 text-xs text-[#176b5b] sm:col-span-2">
+                  <p>Consultation fee: <strong>₦{Number(doctors.find((doctor) => doctor._id === doctorId)?.consultationFee || 0).toLocaleString()}</strong>. Payment is verified by the hospital service before the consultation is unlocked.</p>
+                  {(() => { const doctor = doctors.find((item) => item._id === doctorId); const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; const availability = doctor?.availability || []; return <p className="mt-1 text-[10px] leading-4 text-[#4f7f75]">{availability.length ? `Published availability (${doctor?.timezone || 'Africa/Lagos'}): ${availability.map((slot) => `${days[slot.dayOfWeek] || 'Day'} ${slot.startTime}–${slot.endTime}`).join(', ')}. The server checks the selected time before booking.` : 'No weekly availability has been published for this doctor. The hospital should configure a provider schedule.'}</p>; })()}
+                </div>
+              )}
               <label className="text-xs font-semibold text-slate-700">Consultation type
                 <select value={consultationType} onChange={(event) => setConsultationType(event.target.value as Exclude<ConsultationType, 'CHAT'>)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#1b7b68]">
                   <option value="VIDEO">Video consultation</option><option value="VOICE">Voice call</option>

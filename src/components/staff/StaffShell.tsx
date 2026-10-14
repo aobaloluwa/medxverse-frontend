@@ -86,14 +86,22 @@ export default function StaffShell({ children }: StaffShellProps) {
 
     let cancelled = false;
 
-    void communicationService.setPresence('ONLINE').catch(() => {
-      if (!cancelled) {
-        setOnline(false);
-      }
-    });
+    const publishPresence = () => {
+      void communicationService.setPresence('ONLINE').then(() => {
+        if (!cancelled) setOnline(true);
+      }).catch(() => {
+        if (!cancelled) setOnline(false);
+      });
+    };
+
+    publishPresence();
+    // Refresh the last-seen timestamp while the staff portal is open. The
+    // directory treats ONLINE presence older than two minutes as offline.
+    const heartbeat = window.setInterval(publishPresence, 60_000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(heartbeat);
       void communicationService.setPresence('OFFLINE').catch(() => undefined);
     };
   }, [account?.userType, hasHydrated]);

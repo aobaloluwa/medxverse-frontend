@@ -788,6 +788,8 @@ export default function StaffPage() {
         staff.professionalTitle ||
         undefined,
 
+      consultationFee: Number(staff.consultationFee || 0) || undefined,
+
       jobTitle:
         staff.jobTitle || undefined,
 
@@ -2675,7 +2677,14 @@ function StaffModal({
                     }))
                   }
                 />
+                <Input
+                  label="Virtual Consultation Fee (NGN)"
+                  type="number"
+                  value={String(form.consultationFee ?? '')}
+                  onChange={(value) => setForm((current) => ({ ...current, consultationFee: value.trim() ? Math.max(0, Number(value) || 0) : undefined }))}
+                />
               </div>
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">Used for paid patient-initiated video and voice consultations. Leave blank to use the hospital-wide default fee.</p>
             </FormSection>
 
             {/* PROFESSIONAL REGISTRATION */}

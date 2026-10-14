@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   UserRound,
   Mail,
+  Phone,
   Lock,
   CalendarDays,
   ShieldCheck,
@@ -26,6 +27,9 @@ export default function PatientPortalRegisterPage() {
 
   const [formData, setFormData] = useState({
     name: '',
+    hospitalCode: '',
+    mrn: '',
+    phone: '',
     email: '',
     dateOfBirth: '',
     password: '',
@@ -64,6 +68,9 @@ export default function PatientPortalRegisterPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name.trim(),
+          hospitalCode: formData.hospitalCode.trim().toUpperCase(),
+          mrn: formData.mrn.trim(),
+          phone: formData.phone.trim(),
           email: formData.email.trim(),
           dateOfBirth: formData.dateOfBirth,
           password: formData.password,
@@ -88,7 +95,7 @@ export default function PatientPortalRegisterPage() {
           accountType: AccountType.PATIENT_PORTAL,
           userType: 'PATIENT',
           ...(patient.hospitalId ? { hospitalId: patient.hospitalId } : {}),
-          ...(patient.linkedToHospital && patient.id ? { patientId: patient.id } : {}),
+          ...(patient.hospitalId && patient.id ? { patientId: patient.id, linkedToHospital: true } : {}),
           ...(patient.mrn ? { mrn: patient.mrn } : {}),
         },
         payload.data.token,
@@ -134,7 +141,7 @@ export default function PatientPortalRegisterPage() {
         <div className="mb-4 space-y-2">
           <div className="flex items-start gap-2.5 rounded-xl border border-white/15 bg-white/10 px-3.5 py-3 text-xs text-white backdrop-blur-sm">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>Create one secure account for your care. You can connect your hospital record after registration.</span>
+            <span>Register with your hospital code and Patient ID. Your details must match your existing hospital record.</span>
           </div>
 
           {/* Error */}
@@ -170,6 +177,25 @@ export default function PatientPortalRegisterPage() {
               placeholder="FULL NAME"
               className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium tracking-[0.1em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
             />
+          </div>
+
+          {/* Hospital-issued identity details are matched to the existing HMS patient record. */}
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+            <div className="group relative">
+              <label htmlFor="hospitalCode" className="sr-only">Hospital code</label>
+              <ShieldCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+              <input id="hospitalCode" type="text" name="hospitalCode" required value={formData.hospitalCode} onChange={handleChange} placeholder="HOSPITAL CODE" className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium tracking-[0.1em] text-white outline-none placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15" />
+            </div>
+            <div className="group relative">
+              <label htmlFor="mrn" className="sr-only">Hospital-issued Patient ID</label>
+              <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+              <input id="mrn" type="text" name="mrn" required value={formData.mrn} onChange={handleChange} placeholder="PATIENT ID / MRN" className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium tracking-[0.1em] text-white outline-none placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15" />
+            </div>
+          </div>
+          <div className="group relative">
+            <label htmlFor="phone" className="sr-only">Phone number registered with the hospital</label>
+            <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+            <input id="phone" type="tel" name="phone" autoComplete="tel" required value={formData.phone} onChange={handleChange} placeholder="PHONE NUMBER ON YOUR HOSPITAL RECORD" className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium tracking-[0.1em] text-white outline-none placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15" />
           </div>
 
           {/* Email + Date of Birth */}

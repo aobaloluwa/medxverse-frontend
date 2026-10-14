@@ -12,6 +12,7 @@ import {
   LogOut,
   PanelLeft,
   ShieldCheck,
+  Stethoscope,
   Video,
   X,
 } from "lucide-react";
@@ -21,6 +22,7 @@ type PatientShellProps = { children: React.ReactNode };
 
 const navigation = [
   { label: "Overview", href: "/portal", icon: Home },
+  { label: "Find a doctor", href: "/portal/doctors", icon: Stethoscope },
   { label: "Virtual care", href: "/portal/telemedicine", icon: Video },
 ];
 

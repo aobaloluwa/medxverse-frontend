@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  Bell,
   CheckCircle2,
   ChevronDown,
   CircleAlert,
@@ -31,7 +32,7 @@ type HospitalOption = {
 
 export default function PatientPortalHomePage() {
   const router = useRouter();
-  const { account, setAuth } = useAuthStore();
+  const { account, setAuth, token } = useAuthStore();
 
   const [hospitals, setHospitals] = useState<HospitalOption[]>([]);
   const [loadingHospitals, setLoadingHospitals] = useState(true);
@@ -44,6 +45,8 @@ export default function PatientPortalHomePage() {
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   const linked = Boolean(account?.hospitalId && account?.patientId);
 
@@ -88,6 +91,30 @@ export default function PatientPortalHomePage() {
   useEffect(() => {
     void loadHospitals();
   }, [loadHospitals]);
+
+  const loadPatientNotifications = useCallback(async () => {
+    if (!token || !linked) { setNotifications([]); return; }
+    setLoadingNotifications(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/notifications?limit=8`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.success) {
+        const list = Array.isArray(payload.data?.notifications) ? payload.data.notifications : [];
+        setNotifications(list);
+      }
+    } catch { /* notifications are supplemental; don't block portal use */ }
+    finally { setLoadingNotifications(false); }
+  }, [token, linked]);
+
+  useEffect(() => { void loadPatientNotifications(); }, [loadPatientNotifications]);
+
+  async function markNotificationRead(notificationId: string) {
+    if (!token || !notificationId) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      if (response.ok) setNotifications((current) => current.map((item) => String(item._id) === notificationId ? { ...item, status: 'READ' } : item));
+    } catch { /* leave the notification visible if marking it read fails */ }
+  }
 
   async function connectHospital(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -300,6 +327,17 @@ export default function PatientPortalHomePage() {
             );
           })}
         </section>
+
+        {/* ── Patient notifications ── */}
+        {linked && (
+          <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]"><Bell className="h-5 w-5" /></div><div><h2 className="text-sm font-bold text-slate-800">Care notifications</h2><p className="mt-0.5 text-[10px] text-slate-500">Appointment confirmations and payment receipts.</p></div></div>
+              <button type="button" onClick={() => void loadPatientNotifications()} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"><RefreshCw className={`mr-1 inline h-3 w-3 ${loadingNotifications ? 'animate-spin' : ''}`} />Refresh</button>
+            </div>
+            {notifications.length ? <div className="mt-4 space-y-2">{notifications.map((item: any) => <article key={String(item._id)} className={`rounded-xl border p-3 ${item.status === 'UNREAD' ? 'border-[#cde7e1] bg-[#f5fbf9]' : 'border-slate-100 bg-white'}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold text-slate-800">{item.title}</p><p className="mt-1 text-xs leading-5 text-slate-600">{item.message}</p><p className="mt-2 text-[10px] text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Recently'}</p></div>{item.status === 'UNREAD' && <button type="button" onClick={() => void markNotificationRead(String(item._id))} className="shrink-0 rounded-lg border border-[#cde7e1] px-2 py-1.5 text-[9px] font-bold text-[#1b7b68]">Mark read</button>}</div></article>)}</div> : <p className="mt-4 rounded-xl bg-slate-50 p-4 text-xs text-slate-500">{loadingNotifications ? 'Loading notifications…' : 'No notifications yet. Booking confirmations and verified payment receipts will appear here.'}</p>}
+          </section>
+        )}
 
         {/* ── Status + connect panel ── */}
         <section

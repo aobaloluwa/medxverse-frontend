@@ -10,6 +10,8 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  ClipboardCheck,
+  FlaskConical,
   Clock3,
   Loader2,
   MessageCircle,
@@ -53,6 +55,7 @@ type Consultation = {
   doctorId: string | DoctorRef;
   consultationType: 'VIDEO' | 'VOICE' | 'CHAT';
   status: 'WAITING_ROOM' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  doctorAcceptedAt?: string;
   scheduledStartTime: string;
   meetingUrl?: string;
   meetingRoomId?: string;
@@ -154,6 +157,11 @@ export default function StaffPatientConsultationsPage() {
   const [draft, setDraft] = useState('');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
+  const [showLabRequestForm, setShowLabRequestForm] = useState(false);
+  const [labRequests, setLabRequests] = useState<any[]>([]);
+  const [labSaving, setLabSaving] = useState(false);
+  const [acceptingOrder, setAcceptingOrder] = useState(false);
+  const [labRequestForm, setLabRequestForm] = useState({ testName: '', testCategory: 'CLINICAL_CHEMISTRY', sampleType: 'Blood', priority: 'ROUTINE', notes: '' });
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null);
   const [showChatProfile, setShowChatProfile] = useState(false);
@@ -520,6 +528,70 @@ export default function StaffPatientConsultationsPage() {
     }
   }
 
+  useEffect(() => {
+    if (!selectedId) { setLabRequests([]); return; }
+    let active = true;
+    const loadLabRequests = async () => {
+      try {
+        const response = await apiClient.get(`/telemedicine/sessions/${encodeURIComponent(selectedId)}/lab-requests`);
+        const value = unwrap<any>(response, []);
+        if (active) setLabRequests(Array.isArray(value) ? value : Array.isArray(value?.orders) ? value.orders : []);
+      } catch {
+        if (active) setLabRequests([]);
+      }
+    };
+    void loadLabRequests();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadLabRequests();
+    }, 15000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [selectedId]);
+
+  async function acceptConsultationOrder() {
+    if (!selected) return;
+    setAcceptingOrder(true);
+    setError('');
+    try {
+      const response = await apiClient.patch(`/telemedicine/sessions/${encodeURIComponent(selected._id)}/accept`, {});
+      const updated = unwrap<any>(response, {});
+      const acceptedAt = updated?.doctorAcceptedAt || updated?.data?.doctorAcceptedAt || new Date().toISOString();
+      setSessions((current) => current.map((item) => item._id === selected._id ? { ...item, doctorAcceptedAt: acceptedAt } : item));
+    } catch (cause: any) {
+      setError(cause?.message || 'Unable to accept this consultation order.');
+    } finally {
+      setAcceptingOrder(false);
+    }
+  }
+
+  async function submitLabRequest(event: FormEvent) {
+    event.preventDefault();
+    if (!selected) return;
+    if (!labRequestForm.testName.trim() || !labRequestForm.sampleType.trim()) {
+      setError('Enter the laboratory test and sample type.');
+      return;
+    }
+    setLabSaving(true);
+    setError('');
+    try {
+      const response = await apiClient.post(`/telemedicine/sessions/${encodeURIComponent(selected._id)}/lab-requests`, {
+        testName: labRequestForm.testName.trim(),
+        testCategory: labRequestForm.testCategory,
+        sampleType: labRequestForm.sampleType.trim(),
+        priority: labRequestForm.priority,
+        isStat: labRequestForm.priority === 'STAT',
+        notes: labRequestForm.notes.trim(),
+      });
+      const created = unwrap<any>(response, {});
+      setLabRequests((current) => [created?.data || created, ...current]);
+      setShowLabRequestForm(false);
+      setLabRequestForm({ testName: '', testCategory: 'CLINICAL_CHEMISTRY', sampleType: 'Blood', priority: 'ROUTINE', notes: '' });
+    } catch (cause: any) {
+      setError(cause?.message || 'Unable to send the laboratory request. Confirm that consultation payment is verified.');
+    } finally {
+      setLabSaving(false);
+    }
+  }
+
   async function issuePrescription(event: FormEvent) {
     event.preventDefault();
     if (!selected) return;
@@ -755,6 +827,22 @@ export default function StaffPatientConsultationsPage() {
                     <RefreshCw className="h-4 w-4" />
                   </button>
 
+                  {account?.role?.toUpperCase() === 'DOCTOR' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
+                    selected.doctorAcceptedAt ? (
+                      <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[10px] font-bold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Order accepted</span>
+                    ) : (
+                      <button type="button" disabled={acceptingOrder} onClick={() => void acceptConsultationOrder()} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                        {acceptingOrder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
+                        {acceptingOrder ? 'Accepting…' : 'Accept order'}
+                      </button>
+                    )
+                  )}
+                  {account?.role?.toUpperCase() === 'DOCTOR' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
+                    <button type="button" onClick={() => setShowLabRequestForm(true)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-2.5 py-2 text-[10px] font-bold text-violet-700 hover:bg-violet-100">
+                      <FlaskConical className="h-3.5 w-3.5" /> Lab request
+                    </button>
+                  )}
+
                   {selected.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
                     <button
                       type="button"
@@ -908,6 +996,25 @@ export default function StaffPatientConsultationsPage() {
                 </div>
               )}
 
+              {showLabRequestForm && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-sm sm:p-6" onClick={() => { if (!labSaving) setShowLabRequestForm(false); }}>
+                  <form onSubmit={submitLabRequest} onClick={(event) => event.stopPropagation()} className="w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                      <div><p className="text-[10px] font-bold uppercase tracking-widest text-violet-700">HMS Laboratory</p><h3 className="mt-1 text-base font-bold text-slate-900">New laboratory request</h3><p className="mt-1 text-xs text-slate-500">For {patientName(selected)} · linked to this consultation and patient record</p></div>
+                      <button type="button" disabled={labSaving} onClick={() => setShowLabRequestForm(false)} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Close laboratory request"><X className="h-4 w-4" /></button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
+                      <label className="text-xs font-semibold text-slate-700 sm:col-span-2">Test / investigation name *<input required value={labRequestForm.testName} onChange={(event) => setLabRequestForm((current) => ({ ...current, testName: event.target.value }))} placeholder="e.g. Full blood count" className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-normal outline-none focus:border-violet-500" /></label>
+                      <label className="text-xs font-semibold text-slate-700">Laboratory department<select value={labRequestForm.testCategory} onChange={(event) => setLabRequestForm((current) => ({ ...current, testCategory: event.target.value }))} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal"><option value="HAEMATOLOGY">Haematology</option><option value="CLINICAL_CHEMISTRY">Clinical chemistry</option><option value="MICROBIOLOGY">Microbiology</option><option value="PARASITOLOGY">Parasitology</option><option value="IMMUNOLOGY_SEROLOGY">Immunology / serology</option><option value="HISTOPATHOLOGY">Histopathology</option><option value="CYTOLOGY">Cytology</option><option value="MOLECULAR_DIAGNOSTICS">Molecular diagnostics</option><option value="BLOOD_BANK">Blood bank</option><option value="GENETICS">Genetics</option></select></label>
+                      <label className="text-xs font-semibold text-slate-700">Sample type *<input required value={labRequestForm.sampleType} onChange={(event) => setLabRequestForm((current) => ({ ...current, sampleType: event.target.value }))} placeholder="Blood, urine, swab…" className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-normal outline-none focus:border-violet-500" /></label>
+                      <label className="text-xs font-semibold text-slate-700 sm:col-span-2">Priority<select value={labRequestForm.priority} onChange={(event) => setLabRequestForm((current) => ({ ...current, priority: event.target.value }))} className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal"><option value="ROUTINE">Routine</option><option value="URGENT">Urgent</option><option value="STAT">STAT — immediate</option></select></label>
+                      <label className="text-xs font-semibold text-slate-700 sm:col-span-2">Clinical notes / instructions<textarea value={labRequestForm.notes} onChange={(event) => setLabRequestForm((current) => ({ ...current, notes: event.target.value }))} rows={3} placeholder="Clinical indication, collection instructions…" className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-sm font-normal outline-none focus:border-violet-500" /></label>
+                    </div>
+                    <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end"><button type="button" disabled={labSaving} onClick={() => setShowLabRequestForm(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600">Cancel</button><button type="submit" disabled={labSaving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-violet-800 disabled:opacity-50">{labSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}{labSaving ? 'Sending request…' : 'Send to HMS Lab'}</button></div>
+                  </form>
+                </div>
+              )}
+
               <div
                 ref={messagesContainerRef}
                 onScroll={(event) => {
@@ -924,6 +1031,12 @@ export default function StaffPatientConsultationsPage() {
                   </div>
                 ) : (messages.length > 0 || prescriptions.length > 0) ? (
                   <div className="mx-auto max-w-3xl space-y-3">
+                    {labRequests.length > 0 && (
+                      <section className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-3 sm:p-4">
+                        <div className="mb-2 flex items-center gap-2"><FlaskConical className="h-4 w-4 text-violet-700" /><h3 className="text-xs font-bold text-violet-900">Laboratory requests</h3><span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-violet-700">{labRequests.length}</span></div>
+                        <div className="space-y-2">{labRequests.map((order: any, index: number) => <div key={String(order._id || order.id || index)} className="rounded-xl border border-violet-100 bg-white p-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="text-xs font-bold text-slate-800">{order.testName || order.panelName || 'Laboratory investigation'}</p><span className="rounded-full bg-violet-50 px-2 py-1 text-[9px] font-bold uppercase text-violet-700">{String(order.status || 'PENDING').replace(/_/g, ' ')}</span></div><p className="mt-1 text-[10px] text-slate-500">{String(order.testCategory || '').replace(/_/g, ' ')} · {order.sampleType || 'Sample not specified'} · {String(order.priority || 'ROUTINE').replace(/_/g, ' ')}</p>{order.notes && <p className="mt-1 whitespace-pre-wrap text-[11px] text-slate-600">{order.notes}</p>}</div>)}</div>
+                      </section>
+                    )}
                     {[
                         ...messages.map((message) => ({
                           kind: 'message' as const,

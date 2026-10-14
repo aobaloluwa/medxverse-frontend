@@ -15,6 +15,21 @@ export interface TelemedicinePerson {
   department?: string;
   specialization?: string;
   status?: string;
+  consultationFee?: number;
+  profilePhotoUrl?: string;
+  profileImageUrl?: string;
+  avatarUrl?: string;
+  photoUrl?: string;
+  imageUrl?: string;
+  isOnline?: boolean;
+  online?: boolean;
+  presenceStatus?: string;
+  bio?: string;
+  yearsOfExperience?: number;
+  qualifications?: string[] | string;
+  specialties?: Array<{ specialty?: string; subSpecialty?: string; isPrimary?: boolean; yearsOfExperience?: number }>;
+  availability?: Array<{ dayOfWeek: number; startTime: string; endTime: string }>;
+  timezone?: string;
 }
 
 export interface TelemedicineSession {
@@ -36,6 +51,11 @@ export interface TelemedicineSession {
   callInitiatorType?: 'PATIENT' | 'STAFF';
   endTime?: string;
   durationMinutes?: number;
+  paymentStatus?: 'NOT_REQUIRED' | 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+  consultationFee?: number;
+  paymentCurrency?: string;
+  paymentReference?: string;
+  paymentPaidAt?: string;
 }
 
 export interface TelemedicineMessage {
@@ -140,7 +160,12 @@ export interface JaaSMeetingToken {
 export const telemedicineService = {
   getMeetingToken: (sessionId: string) =>
     request<JaaSMeetingToken>(`/sessions/${encodeURIComponent(sessionId)}/meeting-token`),
+  initializePayment: (sessionId: string) =>
+    request<{ authorizationUrl?: string; reference?: string; amount?: number; currency?: string; paid?: boolean; paymentStatus?: string }>(`/sessions/${encodeURIComponent(sessionId)}/payment/initialize`, { method: 'POST' }),
+  verifyPayment: (sessionId: string, reference: string) =>
+    request<{ paymentStatus: string; paid: boolean; sessionId: string; reference?: string; amount?: number; currency?: string }>(`/sessions/${encodeURIComponent(sessionId)}/payment/verify`, { method: 'POST', body: JSON.stringify({ reference }) }),
   getDirectory: () => request<{ patients: TelemedicinePerson[]; doctors: TelemedicinePerson[] }>('/directory'),
+  getPaymentSummary: () => request<any>('/payments/summary'),
   getSessions: () => request<{ sessions: TelemedicineSession[]; total: number; page: number; totalPages: number }>('/sessions?limit=50'),
   createSessionForAppointment: (appointmentId: string) =>
     request<TelemedicineSession>(`/sessions/from-appointment/${encodeURIComponent(appointmentId)}`, { method: 'POST' }),
@@ -178,6 +203,10 @@ export const telemedicineService = {
     if (!response.ok || payload.success === false) throw new Error(payload.message || `Attachment upload failed (${response.status})`);
     return payload.data;
   },
+  createLabRequest: (sessionId: string, input: { testName: string; testCategory: string; sampleType: string; priority?: 'ROUTINE' | 'URGENT' | 'STAT'; isStat?: boolean; notes?: string }) =>
+    request<any>(`/sessions/${encodeURIComponent(sessionId)}/lab-requests`, { method: 'POST', body: JSON.stringify(input) }),
+  getLabRequests: (sessionId: string) =>
+    request<any[]>(`/sessions/${encodeURIComponent(sessionId)}/lab-requests`),
   issuePrescription: (sessionId: string, input: TelemedicinePrescriptionInput) =>
     request<TelemedicinePrescription>(`/sessions/${encodeURIComponent(sessionId)}/prescriptions`, { method: 'POST', body: JSON.stringify(input) }),
   getSessionPrescriptions: (sessionId: string) =>

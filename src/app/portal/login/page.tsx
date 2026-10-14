@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Mail,
+  UserRound,
   Lock,
   ArrowRight,
   AlertCircle,
@@ -26,7 +27,10 @@ function PatientPortalLoginForm() {
   const isJustRegistered = searchParams.get('registered') === 'true';
   const registeredEmail = searchParams.get('email') || '';
 
+  const [loginMode, setLoginMode] = useState<'patientId' | 'email'>(registeredEmail ? 'email' : 'patientId');
   const [formData, setFormData] = useState({
+    patientId: '',
+    hospitalCode: '',
     email: registeredEmail,
     password: '',
   });
@@ -51,7 +55,7 @@ function PatientPortalLoginForm() {
       const response = await fetch(`${API_BASE_URL}/patient-portal/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: formData.email.trim(), password: formData.password }),
+        body: JSON.stringify({ ...(loginMode === 'patientId' ? { patientId: formData.patientId.trim() } : { email: formData.email.trim() }), hospitalCode: formData.hospitalCode.trim() || undefined, password: formData.password }),
       });
       const payload = await response.json();
       if (!response.ok || !payload?.success || !payload?.data?.token || !payload?.data?.patient) {
@@ -150,22 +154,31 @@ function PatientPortalLoginForm() {
           </Link>
         </div>
 
+        <div className="mb-3 grid grid-cols-2 rounded-sm border border-white/30 p-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+          <button type="button" onClick={() => setLoginMode('patientId')} className={`rounded-sm px-3 py-2.5 transition ${loginMode === 'patientId' ? 'bg-white text-[#1b7b68]' : 'text-white/75 hover:bg-white/10'}`}>Patient ID</button>
+          <button type="button" onClick={() => setLoginMode('email')} className={`rounded-sm px-3 py-2.5 transition ${loginMode === 'email' ? 'bg-white text-[#1b7b68]' : 'text-white/75 hover:bg-white/10'}`}>Email</button>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-3.5">
-          <div className="group relative">
-            <label htmlFor="email" className="sr-only">Account email</label>
-            <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
-            <input
-              id="email"
-              type="email"
-              name="email"
-              autoComplete="email"
-              required
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="EMAIL"
-              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
-            />
-          </div>
+          {loginMode === 'patientId' ? (
+            <div className="group relative">
+              <label htmlFor="patientId" className="sr-only">Hospital-issued Patient ID</label>
+              <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+              <input id="patientId" type="text" name="patientId" autoComplete="username" required value={formData.patientId} onChange={handleChange} placeholder="HOSPITAL PATIENT ID" className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15" />
+            </div>
+          ) : (
+            <div className="group relative">
+              <label htmlFor="email" className="sr-only">Account email</label>
+              <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+              <input id="email" type="email" name="email" autoComplete="email" required value={formData.email} onChange={handleChange} placeholder="EMAIL" className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15" />
+            </div>
+          )}
+          {loginMode === 'patientId' && (
+            <div className="group relative">
+              <label htmlFor="hospitalCode" className="sr-only">Hospital code (optional)</label>
+              <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+              <input id="hospitalCode" type="text" name="hospitalCode" value={formData.hospitalCode} onChange={handleChange} placeholder="HOSPITAL CODE (IF PROVIDED)" className="h-12 w-full rounded-sm border border-white/70 bg-transparent px-11 text-[10px] font-medium tracking-[0.1em] text-white outline-none placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15" />
+            </div>
+          )}
 
           <div className="group relative">
             <label htmlFor="password" className="sr-only">Password</label>
