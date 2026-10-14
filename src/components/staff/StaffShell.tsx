@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
   Bell,
+  ClipboardList,
   Home,
   LogOut,
   MessageCircle,
@@ -25,6 +26,7 @@ import { staffAccountService } from '@/services/staff-account.service';
 const navigation = [
   { label: 'Workspace', href: '/staff', icon: Home },
   { label: 'Messages', href: '/staff/messages', icon: MessageCircle },
+  { label: 'Consultations', href: '/staff/messages/consultations', icon: ClipboardList },
   { label: 'My Patients', href: '/staff/patients', icon: Users },
   { label: 'Tasks & Tickets', href: '/staff/tasks', icon: Ticket },
   { label: 'Work Activity', href: '/staff/activity', icon: Activity },
@@ -301,9 +303,13 @@ export default function StaffShell({ children }: StaffShellProps) {
             const Icon = item.icon;
 
             const active =
-              pathname === item.href ||
-              (item.href !== '/staff' &&
-                pathname.startsWith(`${item.href}/`));
+              item.href === '/staff/messages'
+                ? pathname === '/staff/messages' ||
+                  (pathname.startsWith('/staff/messages/') &&
+                    !pathname.startsWith('/staff/messages/consultations'))
+                : pathname === item.href ||
+                  (item.href !== '/staff' &&
+                    pathname.startsWith(`${item.href}/`));
 
             return (
               <Link

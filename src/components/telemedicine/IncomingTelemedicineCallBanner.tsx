@@ -23,13 +23,35 @@ import { useAuthStore } from '@/store/useAuthStore';
 type CallTrackedSession = TelemedicineSession & {
   callStartedAt?: string | Date | null;
   callEndedAt?: string | Date | null;
+  callAcceptedAt?: string | Date | null;
   callInitiatorType?: 'PATIENT' | 'STAFF';
 };
 
 type IncomingCall = {
   session: TelemedicineSession;
   title: string;
+  callerName: string;
 };
+
+function getPersonName(person: TelemedicineSession['patientId'] | TelemedicineSession['doctorId']): string {
+  if (!person || typeof person === 'string') return '';
+  const value = person as {
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    displayName?: string;
+    fullName?: string;
+    role?: string;
+  };
+  const fullName = [value.firstName, value.lastName].filter(Boolean).join(' ').trim();
+  const name = fullName || value.fullName || value.displayName || value.name || '';
+  if (!name.trim()) return '';
+  // Staff callers are usually clinicians; use the role only when it is a doctor role.
+  if (value.role && /doctor|physician/i.test(value.role) && !/^dr\.?\s/i.test(name)) {
+    return `Dr. ${name}`;
+  }
+  return name;
+}
 
 function readActiveCall(): ActiveTelemedicineCall | null {
   try {
@@ -56,6 +78,7 @@ export default function IncomingTelemedicineCallBanner() {
   const account = useAuthStore((state) => state.account);
 
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
+  const [answerError, setAnswerError] = useState('');
   const [dismissedCallId, setDismissedCallId] = useState('');
 
   const pollingRef = useRef(false);
@@ -79,15 +102,22 @@ export default function IncomingTelemedicineCallBanner() {
           const startedAt = getTimestamp(session.callStartedAt);
           const endedAt = getTimestamp(session.callEndedAt);
 
+          const hasCallAttempt = Boolean(session.activeCallId || startedAt > 0);
+          const acceptedAt = getTimestamp(session.callAcceptedAt);
+          const callHasEnded = endedAt > 0 && startedAt > 0 && endedAt >= startedAt;
+          const acceptanceBelongsToCurrentAttempt = acceptedAt > 0 && (
+            startedAt <= 0 || acceptedAt >= startedAt
+          );
+
           return (
             session.consultationType !== 'CHAT' &&
             !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status) &&
-            startedAt > 0 &&
-            (!endedAt || endedAt < startedAt) &&
-            !session.endTime &&
-            // The caller sees the active-call panel; only the other participant
-            // should receive the incoming-call banner.
-            session.callInitiatorType && session.callInitiatorType !== userType &&
+            hasCallAttempt &&
+            !callHasEnded &&
+            !acceptanceBelongsToCurrentAttempt &&
+            // Do not depend exclusively on optional callInitiatorType/timestamp
+            // fields: some API responses expose activeCallId first. The caller's
+            // own tab records the session in localStorage; the recipient's tab does not.
             session._id !== activeCall?.sessionId
           );
         })
@@ -113,9 +143,15 @@ export default function IncomingTelemedicineCallBanner() {
 
         if (endedAt && startedAt && endedAt >= startedAt) continue;
 
+        const caller = userType === 'PATIENT'
+          ? getPersonName(session.doctorId)
+          : getPersonName(session.patientId);
+        const callerName = caller || (userType === 'PATIENT' ? 'Your doctor' : 'Your patient');
+
         found = {
           session,
           title: session.consultationType === 'VOICE' ? 'Voice call' : 'Video call',
+          callerName,
         };
         break;
       }
@@ -146,7 +182,7 @@ export default function IncomingTelemedicineCallBanner() {
             const notification = new Notification(
               `Incoming ${callTitle.toLowerCase()}`,
               {
-                body: 'Tap to open your secure MedXVerse consultation.',
+                body: `${found.callerName} is calling. Tap to answer.`,
                 tag: `medxverse-call-${sessionId}`,
                 silent: false,
               },
@@ -160,14 +196,18 @@ export default function IncomingTelemedicineCallBanner() {
                   ? `/portal/call/${encodeURIComponent(sessionId)}`
                   : `/staff/call/${encodeURIComponent(sessionId)}`;
 
-              openTelemedicineCall(
-                sessionId,
-                href,
-                `${callTitle.replace(' call', '')} consultation`,
-                router.push,
-              );
-
-              notification.close();
+              const sessionForCall = sessions.find((item) => item._id === sessionId);
+              void telemedicineService.acceptCall(sessionId, String(sessionForCall?.activeCallId || ''))
+                .catch(() => undefined)
+                .finally(() => {
+                  openTelemedicineCall(
+                    sessionId,
+                    href,
+                    `${callTitle.replace(' call', '')} consultation`,
+                    router.push,
+                  );
+                  notification.close();
+                });
             };
           } catch {
             // Native notifications are optional.
@@ -213,7 +253,38 @@ export default function IncomingTelemedicineCallBanner() {
     setIncoming(null);
   }, [dismissedCallId, incoming]);
 
+  useEffect(() => {
+    if (!incoming || incoming.session.callAcceptedAt || !incoming.session.callStartedAt) return;
+    const startedAt = getTimestamp(incoming.session.callStartedAt);
+    if (!startedAt) return;
+    const remaining = Math.max(0, 30_000 - (Date.now() - startedAt));
+    const timeout = window.setTimeout(() => {
+      // Recheck before writing the missed-call record to avoid racing an answer.
+      void telemedicineService.getSessions().then((result) => {
+        const latest = (result.sessions || []).find((item) => item._id === incoming.session._id) as CallTrackedSession | undefined;
+        if (!latest || latest.callAcceptedAt || !latest.activeCallId) return;
+        const latestStart = getTimestamp(latest.callStartedAt);
+        const latestEnd = getTimestamp(latest.callEndedAt);
+        if (latestEnd && latestStart && latestEnd >= latestStart) return;
+        return telemedicineService.recordCallSummary(latest._id, {
+          callId: latest.activeCallId,
+          durationSeconds: 0,
+          participantCount: 0,
+          missedCall: true,
+        }).finally(() => {
+          setDismissedCallId(latest.activeCallId || latest._id);
+          setIncoming(null);
+        });
+      }).catch(() => undefined);
+    }, remaining);
+    return () => window.clearTimeout(timeout);
+  }, [incoming?.session._id, incoming?.session.activeCallId, incoming?.session.callStartedAt, incoming?.session.callAcceptedAt]);
+
   const currentCallId = incoming ? (incoming.session.activeCallId || incoming.session.callStartedAt || incoming.session._id) : '';
+
+  useEffect(() => {
+    setAnswerError('');
+  }, [currentCallId]);
 
   if (!incoming || dismissedCallId === currentCallId) {
     return null;
@@ -225,16 +296,30 @@ export default function IncomingTelemedicineCallBanner() {
     isPatient ? '/portal' : '/staff'
   }/call/${encodeURIComponent(incoming.session._id)}`;
 
-  const accept = () => {
+
+  const accept = async () => {
+    setAnswerError('');
+    try {
+      await telemedicineService.acceptCall(incoming.session._id, String(incoming.session.activeCallId || ''));
+    } catch (error) {
+      // Keep the banner visible rather than making the notification disappear.
+      // This also makes a missing/not-yet-deployed backend endpoint diagnosable.
+      console.error('Unable to register incoming MedXVerse call acceptance:', error);
+      const message = error instanceof Error ? error.message : 'Unable to answer this call yet.';
+      setAnswerError(
+        /route not found.*call-accept|call-accept.*route not found/i.test(message)
+          ? 'The deployed backend is missing the call-answer route. Deploy the updated backend source, then try again.'
+          : message,
+      );
+      return;
+    }
+
     setDismissedCallId(currentCallId);
     setIncoming(null);
-
     openTelemedicineCall(
       incoming.session._id,
       href,
-      `${
-        incoming.session.consultationType === 'VOICE' ? 'Voice' : 'Video'
-      } consultation`,
+      `${incoming.session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`,
       router.push,
     );
   };
@@ -243,9 +328,9 @@ export default function IncomingTelemedicineCallBanner() {
     <aside
       role="alert"
       aria-live="assertive"
-      className="fixed inset-x-3 top-3 z-[9999] mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-[#b9ded3] bg-white/95 p-3 shadow-2xl backdrop-blur-xl sm:inset-x-6 sm:top-5 sm:gap-4 sm:p-4"
+      className="pointer-events-auto fixed left-3 right-3 top-3 z-[2147483647] mx-auto flex min-h-[76px] w-auto max-w-[520px] items-center gap-2 rounded-2xl border border-[#1b7b68]/30 bg-white px-3 py-2 shadow-[0_12px_36px_rgba(0,0,0,0.22)] sm:left-auto sm:right-5 sm:top-5 sm:gap-3 sm:px-3.5"
     >
-      <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]">
+      <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68] sm:h-11 sm:w-11">
         {incoming.session.consultationType === 'VOICE' ? (
           <PhoneCall className="h-5 w-5" />
         ) : (
@@ -257,21 +342,26 @@ export default function IncomingTelemedicineCallBanner() {
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-sm font-bold text-[#174f45]">
-          <BellRing className="h-4 w-4 shrink-0" />
+        <p className="truncate text-sm font-bold leading-5 text-[#174f45] sm:text-[15px]">
+          {incoming.callerName}
+        </p>
+
+        <p className="mt-0.5 flex items-center gap-1 text-xs leading-4 text-slate-600">
+          <BellRing className="h-3.5 w-3.5 shrink-0 text-[#1b7b68]" />
           Incoming {incoming.title.toLowerCase()}
         </p>
-
-        <p className="mt-0.5 text-xs text-slate-600">
-          Someone is calling you. Answer or decline.
-        </p>
+        {answerError ? (
+          <p role="alert" className="mt-1 text-xs font-semibold text-red-700">
+            Could not answer: {answerError}
+          </p>
+        ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={accept}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#176c5c] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/40 sm:px-4"
+          className="inline-flex h-9 items-center gap-1 rounded-lg bg-[#1b7b68] px-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#176c5c] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/40 sm:h-10 sm:gap-1.5 sm:px-3"
           aria-label="Answer incoming call"
         >
           {incoming.session.consultationType === 'VOICE' ? (
@@ -279,7 +369,7 @@ export default function IncomingTelemedicineCallBanner() {
           ) : (
             <Video className="h-4 w-4" />
           )}
-          Answer
+          
         </button>
         <button
           type="button"
@@ -304,11 +394,11 @@ export default function IncomingTelemedicineCallBanner() {
               setIncoming(null);
             }
           }}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 sm:px-4"
+          className="inline-flex h-9 items-center gap-1 rounded-lg bg-red-600 px-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 sm:h-10 sm:gap-1.5 sm:px-3"
           aria-label="Decline incoming call"
         >
           <PhoneOff className="h-4 w-4" />
-          Decline
+          
         </button>
       </div>
 
@@ -317,7 +407,7 @@ export default function IncomingTelemedicineCallBanner() {
         onClick={() => setDismissedCallId(currentCallId)}
         aria-label="Dismiss incoming call notification"
         title="Dismiss notification"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 sm:h-8 sm:w-8"
       >
         <X className="h-4 w-4" />
       </button>

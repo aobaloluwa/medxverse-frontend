@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { telemedicineService } from '@/services/telemedicine.service';
+import { useAuthStore } from '@/store/useAuthStore';
 import {
   Camera,
   CameraOff,
@@ -112,6 +113,9 @@ export default function JitsiMeetingEmbed({
   onClose,
   compact = false,
 }: JitsiMeetingEmbedProps) {
+  const account = useAuthStore((state) => state.account);
+  const userTypeRef = useRef(account?.userType);
+  userTypeRef.current = account?.userType;
   const hostRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<JitsiApi | null>(null);
   const onJoinedRef = useRef(onJoined);
@@ -152,15 +156,15 @@ export default function JitsiMeetingEmbed({
     const durationSeconds = joinedAt
       ? Math.max(0, Math.floor((Date.now() - joinedAt) / 1000))
       : 0;
-    const participantCount = joinedAt
-      ? Math.max(1, maxParticipantCountRef.current)
+    const participantCount = maxParticipantCountRef.current >= 2
+      ? maxParticipantCountRef.current
       : 0;
     summaryPromiseRef.current = telemedicineService
       .recordCallSummary(sessionId, {
         callId: callIdRef.current,
         durationSeconds,
         participantCount,
-        missedCall: !joinedAt || maxParticipantCountRef.current < 2,
+        missedCall: maxParticipantCountRef.current < 2,
       })
       .then(() => undefined)
       .catch((cause) => {
@@ -173,7 +177,9 @@ export default function JitsiMeetingEmbed({
   useEffect(() => {
     let cancelled = false;
     let api: JitsiApi | null = null;
-    let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
+    let loadingTimeout: number | undefined;
+    let callStateTimer: number | undefined;
+    let missedCallTimeout: number | undefined;
 
     async function start() {
       setLoading(true);
@@ -195,9 +201,60 @@ export default function JitsiMeetingEmbed({
         try {
           const callSession = await telemedicineService.markCallStarted(sessionId, requestedCallId);
           if (callSession.activeCallId) callIdRef.current = callSession.activeCallId;
+
+          const isCaller = Boolean(callSession.callInitiatorType && callSession.callInitiatorType === userTypeRef.current);
+          if (isCaller) {
+            const callStartedMs = new Date(callSession.callStartedAt || Date.now()).getTime();
+            callStateTimer = window.setInterval(() => {
+              void telemedicineService.getSessions().then((result) => {
+                if (cancelled) return;
+                const latest = (result.sessions || []).find((item) => item._id === sessionId);
+                if (!latest || latest.activeCallId !== callIdRef.current) return;
+                if (latest.callAcceptedAt) {
+                  if (missedCallTimeout) {
+                    window.clearTimeout(missedCallTimeout);
+                    missedCallTimeout = undefined;
+                  }
+                }
+                const endedAt = latest.callEndedAt ? new Date(latest.callEndedAt).getTime() : 0;
+                const startedAt = latest.callStartedAt ? new Date(latest.callStartedAt).getTime() : callStartedMs;
+                if (endedAt && endedAt >= startedAt) {
+                  if (callStateTimer) window.clearInterval(callStateTimer);
+                  callStateTimer = undefined;
+                  if (!summarySentRef.current) void saveCallSummary();
+                  try { apiRef.current?.executeCommand('hangup'); } catch { /* already closed */ }
+                  onCloseRef.current();
+                }
+              }).catch(() => undefined);
+            }, 2500);
+
+            missedCallTimeout = window.setTimeout(() => {
+              void telemedicineService.getSessions().then((result) => {
+                if (cancelled || summarySentRef.current) return;
+                const latest = (result.sessions || []).find((item) => item._id === sessionId);
+                if (!latest || latest.activeCallId !== callIdRef.current || latest.callAcceptedAt) return;
+                const endedAt = latest.callEndedAt ? new Date(latest.callEndedAt).getTime() : 0;
+                const startedAt = latest.callStartedAt ? new Date(latest.callStartedAt).getTime() : callStartedMs;
+                if (endedAt && endedAt >= startedAt) return;
+                // Nobody answered within 30 seconds. Save a missed-call event and stop ringing.
+                void telemedicineService.recordCallSummary(sessionId, {
+                  callId: callIdRef.current,
+                  durationSeconds: 0,
+                  participantCount: 0,
+                  missedCall: true,
+                }).catch(() => undefined).finally(() => {
+                  if (cancelled) return;
+                  summarySentRef.current = true;
+                  try { apiRef.current?.executeCommand('hangup'); } catch { /* already closed */ }
+                  onCloseRef.current();
+                });
+              }).catch(() => undefined);
+            }, Math.max(0, 30_000 - (Date.now() - callStartedMs)));
+          }
         } catch (callStartError) {
-          // Calling should remain usable if activity logging is temporarily down.
-          console.error('Unable to publish telemedicine call start:', callStartError);
+          // Call activity logging is auxiliary; do not block joining the meeting.
+          // The service already normalizes a duplicate sessionId record.
+          console.warn('Unable to publish telemedicine call start; continuing into the meeting.', callStartError);
         }
 
         const credentials =
@@ -317,7 +374,7 @@ export default function JitsiMeetingEmbed({
           }
         });
 
-        loadingTimeout = setTimeout(() => {
+        loadingTimeout = window.setTimeout(() => {
           if (!cancelled) {
             setLoading(false);
           }
@@ -338,11 +395,14 @@ export default function JitsiMeetingEmbed({
 
     return () => {
       cancelled = true;
-      void saveCallSummary();
+      // Unmount/cleanup is not evidence that a participant ended the call.
+      // Save summaries only from explicit hang-up / Jitsi leave / missed-call handlers.
 
       if (loadingTimeout) {
-        clearTimeout(loadingTimeout);
+        window.clearTimeout(loadingTimeout);
       }
+      if (callStateTimer) window.clearInterval(callStateTimer);
+      if (missedCallTimeout) window.clearTimeout(missedCallTimeout);
 
       try {
         api?.dispose();

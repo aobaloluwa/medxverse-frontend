@@ -898,7 +898,7 @@ export default function TelemedicinePage() {
                                 </div>
                                 <div className="min-w-0">
                                   <p className="text-xs font-bold text-slate-800">{call.callType === 'VIDEO' ? 'Video call' : 'Voice call'}</p>
-                                  <p className="mt-0.5 text-[11px] font-semibold text-[#1b7b68]">Calling…</p>
+                                  <p className="mt-0.5 text-[11px] font-semibold text-[#1b7b68]">{message.messageText || 'Calling…'}</p>
                                   <p className="mt-1 text-[9px] text-slate-400">{formatTime(message.sentAt) || formatDateTime(message.sentAt)}</p>
                                 </div>
                               </div>

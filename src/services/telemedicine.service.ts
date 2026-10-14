@@ -48,6 +48,7 @@ export interface TelemedicineSession {
   clinicalNotes?: string;
   actualStartTime?: string;
   callStartedAt?: string;
+  callAcceptedAt?: string;
   callEndedAt?: string;
   activeCallId?: string;
   callInitiatorType?: 'PATIENT' | 'STAFF';
@@ -175,8 +176,29 @@ export const telemedicineService = {
     request<TelemedicineSession>('/sessions', { method: 'POST', body: JSON.stringify(input) }),
   updateStatus: (id: string, status: TelemedicineStatus, clinicalNotes?: string) =>
     request<TelemedicineSession>(`/sessions/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, clinicalNotes }) }),
-  markCallStarted: (sessionId: string, callId: string) =>
-    request<TelemedicineSession>(`/sessions/${encodeURIComponent(sessionId)}/call-started`, { method: 'POST', body: JSON.stringify({ callId }) }),
+  acceptCall: (sessionId: string, callId: string) =>
+    request<TelemedicineSession>(`/sessions/${encodeURIComponent(sessionId)}/call-accept`, { method: 'POST', body: JSON.stringify({ callId }) }),
+  markCallStarted: async (sessionId: string, callId: string): Promise<TelemedicineSession> => {
+    try {
+      return await request<TelemedicineSession>(
+        `/sessions/${encodeURIComponent(sessionId)}/call-started`,
+        { method: 'POST', body: JSON.stringify({ callId }) },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      // Some backend versions enforce a unique call-start/activity record per
+      // consultation session. If that record already exists, treat the request
+      // as idempotent: the existing session is still valid and the meeting
+      // token can be fetched normally. Do not surface this expected condition
+      // as a Next.js development error overlay.
+      if (/duplicate entry/i.test(message) && /sessionId/i.test(message) && /already exists/i.test(message)) {
+        return { _id: sessionId, activeCallId: callId } as TelemedicineSession;
+      }
+
+      throw error;
+    }
+  },
   getMessages: (sessionId: string) => request<TelemedicineMessage[]>(`/messages/session/${encodeURIComponent(sessionId)}`),
   recordCallSummary: (sessionId: string, input: { callId: string; durationSeconds: number; participantCount: number; missedCall?: boolean }) =>
     request<TelemedicineMessage>(`/sessions/${encodeURIComponent(sessionId)}/call-summary`, {

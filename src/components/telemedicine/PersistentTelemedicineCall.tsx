@@ -137,6 +137,34 @@ export default function PersistentTelemedicineCall() {
     return () => { cancelled = true; };
   }, [activeCall?.sessionId]);
 
+  // Keep the floating call badge synchronized with the recipient's answer/end state.
+  useEffect(() => {
+    if (!activeCall?.sessionId) return;
+    let cancelled = false;
+    const refreshCallState = () => {
+      if (document.visibilityState !== 'visible') return;
+      void telemedicineService.getSessions().then((result) => {
+        if (cancelled) return;
+        const latest = (result.sessions || []).find((item) => item._id === activeCall.sessionId);
+        if (!latest) return;
+        setSession((current) => {
+          if (!current || current._id !== latest._id) return latest;
+          if (
+            current.callAcceptedAt === latest.callAcceptedAt &&
+            current.callEndedAt === latest.callEndedAt &&
+            current.activeCallId === latest.activeCallId
+          ) return current;
+          return { ...current, ...latest };
+        });
+      }).catch(() => undefined);
+    };
+    const timer = window.setInterval(refreshCallState, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeCall?.sessionId]);
+
   const clearCall = useCallback(() => {
     try { window.localStorage.removeItem(ACTIVE_TELEMEDICINE_CALL_KEY); } catch { /* Ignore storage errors. */ }
     setActiveCall(null);
@@ -184,7 +212,7 @@ export default function PersistentTelemedicineCall() {
         ) : (
           <div className="flex cursor-move touch-none items-center gap-3 bg-white/65 px-4 py-3.5 backdrop-blur-md" title="Drag to move this call panel">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1b7b68]">{/voice/i.test(activeCall.title) ? <PhoneCall className="h-4 w-4" /> : <Video className="h-4 w-4" />}</span>
-            <button type="button" onClick={returnToCall} className="min-w-0 flex-1 text-left"><span className="block text-xs font-bold text-[#174f45]">Call in progress</span><span className="mt-0.5 block truncate text-[10px] text-slate-600">{activeCall.title} · Tap to return</span></button>
+            <button type="button" onClick={returnToCall} className="min-w-0 flex-1 text-left"><span className="block text-xs font-bold text-[#174f45]">{session?.callAcceptedAt ? 'In call' : 'Calling…'}</span><span className="mt-0.5 block truncate text-[10px] text-slate-600">{activeCall.title} · Tap to return</span></button>
             <button type="button" onClick={returnToCall} aria-label="Return to call interface" title="Return to call" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1b7b68] text-white hover:bg-[#176c5c]"><ArrowUpRight className="h-4 w-4" /></button>
             <button type="button" onClick={hangUp} aria-label="Hang up active call" title="Hang up" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"><X className="h-4 w-4" /></button>
           </div>
