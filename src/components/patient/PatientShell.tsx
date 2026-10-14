@@ -5,18 +5,21 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
+  Bell,
   CalendarClock,
   ChevronRight,
   Home,
   Hospital,
   LogOut,
   PanelLeft,
-  ShieldCheck,
+  Settings,
+  UserRound,
   Stethoscope,
   Video,
   X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
+import { API_BASE_URL } from "@/services/appointment.service";
 
 type PatientShellProps = { children: React.ReactNode };
 
@@ -24,12 +27,16 @@ const navigation = [
   { label: "Overview", href: "/portal", icon: Home },
   { label: "Find a doctor", href: "/portal/doctors", icon: Stethoscope },
   { label: "Virtual care", href: "/portal/telemedicine", icon: Video },
+  { label: "Notifications", href: "/portal/notifications", icon: Bell },
+  { label: "My profile", href: "/portal/profile", icon: UserRound },
+  { label: "Settings", href: "/portal/settings", icon: Settings },
 ];
 
 export default function PatientShell({ children }: PatientShellProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { account, isAuthenticated, hasHydrated, logout } = useAuthStore();
+  const { account, isAuthenticated, hasHydrated, logout, token } = useAuthStore();
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -45,6 +52,39 @@ export default function PatientShell({ children }: PatientShellProps) {
       router.replace("/portal/login");
     }
   }, [account?.userType, hasHydrated, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (!token || account?.userType !== "PATIENT" || !account?.hospitalId) {
+      setUnreadNotifications(0);
+      return;
+    }
+
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
+          headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!cancelled && response.ok && payload?.success) {
+          setUnreadNotifications(Number(payload.data?.unreadCount || 0));
+        }
+      } catch {
+        // Keep the shell usable if notifications are temporarily unavailable.
+      }
+    };
+
+    void loadUnread();
+    const timer = window.setInterval(() => void loadUnread(), 30000);
+    const onFocus = () => void loadUnread();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [account?.hospitalId, account?.userType, token, pathname]);
 
   const handleLogout = () => {
     logout();
@@ -93,8 +133,12 @@ export default function PatientShell({ children }: PatientShellProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href="/portal/telemedicine" aria-label="Virtual care" className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-50 hover:text-[#1b7b68]">
+          <Link href="/portal/telemedicine" aria-label="Virtual care" title="Virtual care" className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-50 hover:text-[#1b7b68]">
             <CalendarClock className="h-5 w-5" />
+          </Link>
+          <Link href="/portal/notifications" aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`} title="Notifications" className={`relative rounded-xl p-2 transition hover:bg-[#e8f5f3] hover:text-[#1b7b68] ${pathname.startsWith("/portal/notifications") ? "bg-[#e8f5f3] text-[#1b7b68]" : "text-slate-400"}`}>
+            <Bell className="h-5 w-5" />
+            {unreadNotifications > 0 && <span className="absolute right-1 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
           </Link>
           <div className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
           <div className="flex items-center gap-2 pl-1">

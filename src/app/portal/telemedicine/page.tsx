@@ -26,7 +26,6 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
-import PatientShell from '@/components/patient/PatientShell';
 import ChatAttachmentViewer from '@/components/chat/ChatAttachmentViewer';
 import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
 import {
@@ -589,7 +588,7 @@ export default function TelemedicinePage() {
 
   if (isPatientPortal && !isPatientLinked) {
     return (
-      <PatientShell>
+
         <section className="flex min-h-[calc(100vh-10rem)] items-center justify-center text-slate-800">
           <div className="w-full max-w-3xl rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]">
@@ -611,12 +610,12 @@ export default function TelemedicinePage() {
             </a>
           </div>
         </section>
-      </PatientShell>
+
     );
   }
 
   const workspace = (
-    <div className="space-y-4 text-slate-800">
+    <div className="space-y-4 text-slate-800 max-md:-mx-4 max-md:-mt-4 max-md:-mb-4 max-md:w-[calc(100%+2rem)] max-md:max-w-[100vw]">
       {/* <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1b7b68]">
@@ -675,7 +674,7 @@ export default function TelemedicinePage() {
         </section>
       )}
 
-      <div className="grid h-[calc(100dvh-6.5rem)] min-h-0 max-h-none grid-cols-1 overflow-hidden rounded-xl sm:rounded-3xl border border-slate-100 bg-white shadow-sm md:h-[calc(100vh-7rem)] md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
+      <div className="grid h-[calc(100dvh-4rem)] w-full min-h-0 max-h-[calc(100dvh-4rem)] grid-cols-1 overflow-hidden overscroll-none rounded-none border-0 bg-white shadow-sm sm:rounded-3xl sm:border sm:border-slate-100 md:h-[calc(100vh-7rem)] md:max-h-none md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] md:overflow-hidden md:shadow-sm xl:grid-cols-[300px_minmax(0,1fr)_260px]">
         <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-slate-100 bg-white`}>
           <div className="border-b border-slate-100 p-4">
             <div className="flex items-center justify-between gap-2">
@@ -1306,5 +1305,5 @@ export default function TelemedicinePage() {
     </div>
   );
 
-  return isPatientPortal ? <PatientShell>{workspace}</PatientShell> : workspace;
+  return workspace;
 }

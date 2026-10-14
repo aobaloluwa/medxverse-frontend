@@ -1,8 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import PatientShell from "@/components/patient/PatientShell";
 
-/** Navigation is rendered by PatientShell on authenticated patient pages. */
+/**
+ * Keep the patient navigation shell mounted across portal route changes.
+ * Authentication screens intentionally remain outside the dashboard shell.
+ */
 export default function PatientPortalLayout({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  const pathname = usePathname();
+  const isAuthPage = pathname === "/portal/login" || pathname === "/portal/register";
+
+  if (isAuthPage) return <>{children}</>;
+
+  return <PatientShell>{children}</PatientShell>;
 }

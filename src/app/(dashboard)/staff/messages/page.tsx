@@ -834,14 +834,14 @@ export default function StaffMessagesPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <a
+                {/* <a
                   href="/staff/messages/consultations"
                   className="flex h-9 items-center gap-2 rounded-xl border border-[#cce8e2] bg-[#f0faf7] px-3 text-[10px] font-bold text-[#176c5c] transition hover:bg-[#e3f5ef]"
                   title="Open patient consultations"
                 >
                   <Video className="h-4 w-4" />
                   <span className="hidden sm:inline">Patient care</span>
-                </a>
+                </a> */}
                 <button
                   type="button"
                   onClick={() => setShowNewChat(true)}

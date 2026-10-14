@@ -18,7 +18,6 @@ import {
   Wallet,
   RefreshCw,
 } from "lucide-react";
-import PatientShell from "@/components/patient/PatientShell";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
   telemedicineService,
@@ -139,7 +138,7 @@ export default function PatientDoctorsPage() {
   }
 
   return (
-    <PatientShell>
+
       <div className="min-h-full space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
         <section className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm shadow-slate-900/[0.025] sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -276,6 +275,6 @@ export default function PatientDoctorsPage() {
           <Link href="/portal/telemedicine" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#b8ddd3] bg-white px-4 py-3 text-xs font-bold text-[#176c5c] hover:bg-[#e8f5f3]">Open virtual care <ArrowRight className="h-4 w-4" /></Link>
         </div>
       </div>
-    </PatientShell>
+
   );
 }

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CalendarClock, Loader2, Video } from 'lucide-react';
-import PatientShell from '@/components/patient/PatientShell';
 import { useAuthStore } from '@/store/useAuthStore';
 import { telemedicineService, type TelemedicinePerson, type TelemedicineSession } from '@/services/telemedicine.service';
 
@@ -64,7 +63,7 @@ export default function PatientCallPage() {
   const unavailable = session && (session.consultationType === 'CHAT' || ended || (session.status !== 'IN_PROGRESS' && new Date(session.scheduledStartTime).getTime() > Date.now()));
 
   return (
-    <PatientShell>
+
       <main className="mx-auto w-full max-w-[1600px] space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -98,6 +97,6 @@ export default function PatientCallPage() {
           </div>
         ) : null}
       </main>
-    </PatientShell>
+
   );
 }

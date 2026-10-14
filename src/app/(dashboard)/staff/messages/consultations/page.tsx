@@ -667,14 +667,14 @@ export default function StaffPatientConsultationsPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Link
+                {/* <Link
                   href="/staff/messages"
                   className="flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-[10px] font-bold text-slate-600 transition hover:bg-slate-100"
                   title="Back to staff messages"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Staff chat</span>
-                </Link>
+                </Link> */}
 
                 <button
                   type="button"

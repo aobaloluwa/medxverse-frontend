@@ -5,22 +5,22 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  Bell,
   CheckCircle2,
   ChevronDown,
   CircleAlert,
   Hospital,
   Loader2,
   LockKeyhole,
-  RefreshCw,
   ShieldCheck,
+  Settings,
   Video,
+  RefreshCw,
+  UserRound as UserRoundIcon,
   X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { AccountType } from "@/types/auth.types";
 import { API_BASE_URL } from "@/services/appointment.service";
-import PatientShell from "@/components/patient/PatientShell";
 
 type HospitalOption = {
   id: string;
@@ -45,8 +45,9 @@ export default function PatientPortalHomePage() {
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [liveProfile, setLiveProfile] = useState<any>(null);
+  const [connectionInfo, setConnectionInfo] = useState<any>(null);
+  const [lastLiveUpdate, setLastLiveUpdate] = useState<Date | null>(null);
 
   const linked = Boolean(account?.hospitalId && account?.patientId);
 
@@ -92,29 +93,41 @@ export default function PatientPortalHomePage() {
     void loadHospitals();
   }, [loadHospitals]);
 
-  const loadPatientNotifications = useCallback(async () => {
-    if (!token || !linked) { setNotifications([]); return; }
-    setLoadingNotifications(true);
+  const refreshLiveDashboard = useCallback(async () => {
+    if (!token || !linked) {
+      setLiveProfile(null);
+      setConnectionInfo(null);
+      return;
+    }
+    const headers = { Accept: "application/json", Authorization: `Bearer ${token}` };
     try {
-      const response = await fetch(`${API_BASE_URL}/notifications?limit=8`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, cache: 'no-store' });
-      const payload = await response.json().catch(() => null);
-      if (response.ok && payload?.success) {
-        const list = Array.isArray(payload.data?.notifications) ? payload.data.notifications : [];
-        setNotifications(list);
-      }
-    } catch { /* notifications are supplemental; don't block portal use */ }
-    finally { setLoadingNotifications(false); }
+      const [profileResponse, connectionResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/patient-portal/auth/profile`, { headers, cache: "no-store" }),
+        fetch(`${API_BASE_URL}/patient-portal/auth/connection`, { headers, cache: "no-store" }),
+      ]);
+      const [profilePayload, connectionPayload] = await Promise.all([
+        profileResponse.json().catch(() => null),
+        connectionResponse.json().catch(() => null),
+      ]);
+      if (profileResponse.ok && profilePayload?.success) setLiveProfile(profilePayload.data || null);
+      if (connectionResponse.ok && connectionPayload?.success) setConnectionInfo(connectionPayload.data || null);
+      setLastLiveUpdate(new Date());
+    } catch {
+      // Live status is supplemental; retain the last known dashboard state during a brief network interruption.
+    }
   }, [token, linked]);
 
-  useEffect(() => { void loadPatientNotifications(); }, [loadPatientNotifications]);
-
-  async function markNotificationRead(notificationId: string) {
-    if (!token || !notificationId) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, cache: 'no-store' });
-      if (response.ok) setNotifications((current) => current.map((item) => String(item._id) === notificationId ? { ...item, status: 'READ' } : item));
-    } catch { /* leave the notification visible if marking it read fails */ }
-  }
+  useEffect(() => {
+    void refreshLiveDashboard();
+    if (!linked) return;
+    const timer = window.setInterval(() => void refreshLiveDashboard(), 30000);
+    const onFocus = () => void refreshLiveDashboard();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshLiveDashboard, linked]);
 
   async function connectHospital(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -185,29 +198,35 @@ export default function PatientPortalHomePage() {
   const quickLinks = [
     {
       label: "Virtual Care",
-      description: "Join consultations and message your care team.",
+      description: "Access your consultations and virtual care workspace.",
       href: "/portal/telemedicine",
       icon: Video,
       disabled: !linked,
     },
     {
       label: "Hospital Connection",
-      description: "Link or manage your hospital patient record.",
+      description: "View or connect your hospital patient record.",
       href: "#hospital-connection",
       icon: Hospital,
       disabled: false,
     },
     {
-      label: "Your Privacy",
-      description: "We verify your details before attaching any record.",
-      href: "#",
-      icon: ShieldCheck,
+      label: "My Profile",
+      description: "Review and update your contact information.",
+      href: "/portal/profile",
+      icon: UserRoundIcon,
+      disabled: false,
+    },
+    {
+      label: "Account Settings",
+      description: "Manage notification preferences and account security.",
+      href: "/portal/settings",
+      icon: Settings,
       disabled: false,
     },
   ];
-
   return (
-    <PatientShell>
+
       <div className="space-y-6">
         {/* ── Hero banner ── */}
         <section className="overflow-hidden rounded-[28px] bg-[#1b7b68] p-6 text-white shadow-lg shadow-[#1b7b68]/10 sm:p-8">
@@ -230,6 +249,34 @@ export default function PatientPortalHomePage() {
             </div>
           </div>
         </section>
+
+        {/* ── Live overview ── */}
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Link href={linked ? "/portal/profile" : "#hospital-connection"} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#1b7b68]/30 hover:shadow-md">
+            <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Patient record</span><ShieldCheck className="h-4 w-4 text-[#1b7b68]" /></div>
+            <p className="mt-2 text-base font-bold text-slate-900">{linked ? "Connected" : "Not linked"}</p>
+            <p className="mt-1 text-[11px] text-slate-500">{linked ? (liveProfile?.mrn ? `MRN ${liveProfile.mrn}` : "Your hospital record is linked") : "Connect your hospital record to unlock care services"}</p>
+          </Link>
+          <Link href="#hospital-connection" className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#1b7b68]/30 hover:shadow-md">
+            <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Hospital</span><Hospital className="h-4 w-4 text-[#1b7b68]" /></div>
+            <p className="mt-2 truncate text-base font-bold text-slate-900">{connectionInfo?.hospital?.name || (linked ? "Connected hospital" : "Choose a hospital")}</p>
+            <p className="mt-1 text-[11px] text-slate-500">{connectionInfo?.hospital?.address || (linked ? "Connection verified" : "Link an existing patient record")}</p>
+          </Link>
+          <Link href="/portal/profile" className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#1b7b68]/30 hover:shadow-md">
+            <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Profile completeness</span><UserRoundIcon className="h-4 w-4 text-[#1b7b68]" /></div>
+            <p className="mt-2 text-base font-bold text-slate-900">{liveProfile ? `${Math.round([liveProfile.email, liveProfile.phone, liveProfile.address, liveProfile.dateOfBirth, liveProfile.gender].filter(Boolean).length / 5 * 100)}%` : "Manage profile"}</p>
+            <p className="mt-1 text-[11px] text-slate-500">{liveProfile ? "Keep your contact details current" : "Complete your contact information"}</p>
+          </Link>
+          <Link href="/portal/telemedicine" className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#1b7b68]/30 hover:shadow-md">
+            <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Virtual care</span><Video className="h-4 w-4 text-[#1b7b68]" /></div>
+            <p className="mt-2 text-base font-bold text-slate-900">{linked ? "Ready to access" : "Setup required"}</p>
+            <p className="mt-1 text-[11px] text-slate-500">{linked ? "Open your virtual care workspace" : "Connect your hospital first"}</p>
+          </Link>
+        </section>
+        <div className="flex items-center justify-between gap-3 text-[10px] text-slate-400">
+          <span>Dashboard status refreshes automatically while this page is open.</span>
+          <span>{lastLiveUpdate ? `Updated ${lastLiveUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Checking live status…"}</span>
+        </div>
 
         {/* ── Alerts ── */}
         {error && (
@@ -327,17 +374,6 @@ export default function PatientPortalHomePage() {
             );
           })}
         </section>
-
-        {/* ── Patient notifications ── */}
-        {linked && (
-          <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]"><Bell className="h-5 w-5" /></div><div><h2 className="text-sm font-bold text-slate-800">Care notifications</h2><p className="mt-0.5 text-[10px] text-slate-500">Appointment confirmations and payment receipts.</p></div></div>
-              <button type="button" onClick={() => void loadPatientNotifications()} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"><RefreshCw className={`mr-1 inline h-3 w-3 ${loadingNotifications ? 'animate-spin' : ''}`} />Refresh</button>
-            </div>
-            {notifications.length ? <div className="mt-4 space-y-2">{notifications.map((item: any) => <article key={String(item._id)} className={`rounded-xl border p-3 ${item.status === 'UNREAD' ? 'border-[#cde7e1] bg-[#f5fbf9]' : 'border-slate-100 bg-white'}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold text-slate-800">{item.title}</p><p className="mt-1 text-xs leading-5 text-slate-600">{item.message}</p><p className="mt-2 text-[10px] text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Recently'}</p></div>{item.status === 'UNREAD' && <button type="button" onClick={() => void markNotificationRead(String(item._id))} className="shrink-0 rounded-lg border border-[#cde7e1] px-2 py-1.5 text-[9px] font-bold text-[#1b7b68]">Mark read</button>}</div></article>)}</div> : <p className="mt-4 rounded-xl bg-slate-50 p-4 text-xs text-slate-500">{loadingNotifications ? 'Loading notifications…' : 'No notifications yet. Booking confirmations and verified payment receipts will appear here.'}</p>}
-          </section>
-        )}
 
         {/* ── Status + connect panel ── */}
         <section
@@ -605,6 +641,6 @@ export default function PatientPortalHomePage() {
           must have an active MedXVerse account and an existing patient record.
         </p>
       </div>
-    </PatientShell>
+
   );
 }
