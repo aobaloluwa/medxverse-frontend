@@ -617,8 +617,8 @@ export default function TelemedicinePage() {
 
   const workspace = (
     <div className="space-y-4 text-slate-800">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* <div>
+      {/* <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1b7b68]">
             {isPatientPortal ? 'Patient workspace' : 'MedXVerse MHMS'}
           </p>
@@ -628,7 +628,7 @@ export default function TelemedicinePage() {
           <p className="mt-1 text-sm text-slate-500">
             Manage consultations, join appointments and message your care team.
           </p>
-        </div> */}
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -645,7 +645,7 @@ export default function TelemedicinePage() {
             <Plus className="h-4 w-4" /> Book consultation
           </button>
         </div>
-      </div>
+      </div> */}
 
       {error && (
         <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-xs text-rose-700">
@@ -802,7 +802,7 @@ export default function TelemedicinePage() {
                       {selectedSession.doctorAcceptedAt && (
                         <div className="flex justify-center py-1" role="status" aria-live="polite">
                           <div className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-[11px] font-semibold text-emerald-800 shadow-sm">
-                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                            {/* <CheckCircle2 className="h-4 w-4 shrink-0" /> */}
                             Dr. {displayName(selectedSession.doctorId)} Accepted your consultation order
                             <span className="hidden sm:inline text-emerald-600">· {formatDateTime(selectedSession.doctorAcceptedAt)}</span>
                           </div>

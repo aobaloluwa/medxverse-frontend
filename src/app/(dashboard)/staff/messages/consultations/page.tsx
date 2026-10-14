@@ -1045,7 +1045,7 @@ export default function StaffPatientConsultationsPage() {
                     {selected.doctorAcceptedAt && (
                       <div className="flex justify-center py-1" role="status" aria-live="polite">
                         <div className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-[11px] font-semibold text-emerald-800 shadow-sm">
-                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          {/* <CheckCircle2 className="h-4 w-4 shrink-0" /> */}
                           Dr. {selected.doctorAcceptedByName || String(account?.name || `${account?.firstName || ''} ${account?.lastName || ''}`.trim() || (typeof selected.doctorId === 'object' ? `${selected.doctorId.firstName || ''} ${selected.doctorId.lastName || ''}`.trim() : 'Doctor'))} Accepted your consultation order
                           <span className="hidden sm:inline text-emerald-600">· {formatDate(selected.doctorAcceptedAt)}</span>
                         </div>
