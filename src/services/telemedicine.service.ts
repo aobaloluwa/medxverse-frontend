@@ -39,6 +39,8 @@ export interface TelemedicineSession {
   doctorId: TelemedicinePerson | string;
   consultationType: ConsultationType;
   status: TelemedicineStatus;
+  /** Set by the assigned doctor when the consultation order is accepted. */
+  doctorAcceptedAt?: string;
   scheduledStartTime: string;
   meetingRoomId: string;
   meetingUrl?: string;

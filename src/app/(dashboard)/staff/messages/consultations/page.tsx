@@ -56,6 +56,7 @@ type Consultation = {
   consultationType: 'VIDEO' | 'VOICE' | 'CHAT';
   status: 'WAITING_ROOM' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
   doctorAcceptedAt?: string;
+  doctorAcceptedByName?: string;
   scheduledStartTime: string;
   meetingUrl?: string;
   meetingRoomId?: string;
@@ -369,6 +370,10 @@ export default function StaffPatientConsultationsPage() {
 
   const sendMessage = async () => {
     if (!selected || (!draft.trim() && !attachmentFile) || sending) return;
+    if (!selected.doctorAcceptedAt) {
+      setError('Messaging is locked until the assigned doctor accepts this consultation order.');
+      return;
+    }
     if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status)) {
       setError('This consultation has ended. Messages are disabled. The patient can book a follow-up consultation.');
       return;
@@ -445,11 +450,15 @@ export default function StaffPatientConsultationsPage() {
       setError('This is a messages-only consultation. Voice and video calls are disabled.');
       return;
     }
+    if (!session.doctorAcceptedAt) {
+      setError('Accept this consultation order before starting the call.');
+      return;
+    }
     if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status)) {
       setError('This consultation has ended. Book a follow-up consultation to start a new session.');
       return;
     }
-    if (session.status !== 'IN_PROGRESS' && new Date(session.scheduledStartTime).getTime() > Date.now()) {
+    if (new Date(session.scheduledStartTime).getTime() > Date.now()) {
       setError(`This call is not available yet. It can be joined at ${new Date(session.scheduledStartTime).toLocaleString()}.`);
       return;
     }
@@ -555,7 +564,8 @@ export default function StaffPatientConsultationsPage() {
       const response = await apiClient.patch(`/telemedicine/sessions/${encodeURIComponent(selected._id)}/accept`, {});
       const updated = unwrap<any>(response, {});
       const acceptedAt = updated?.doctorAcceptedAt || updated?.data?.doctorAcceptedAt || new Date().toISOString();
-      setSessions((current) => current.map((item) => item._id === selected._id ? { ...item, doctorAcceptedAt: acceptedAt } : item));
+      const doctorName = String(account?.name || `${account?.firstName || ''} ${account?.lastName || ''}`.trim() || 'Doctor');
+      setSessions((current) => current.map((item) => item._id === selected._id ? { ...item, doctorAcceptedAt: acceptedAt, doctorAcceptedByName: doctorName } : item));
     } catch (cause: any) {
       setError(cause?.message || 'Unable to accept this consultation order.');
     } finally {
@@ -637,7 +647,7 @@ export default function StaffPatientConsultationsPage() {
   }
 
   return (
-    <div className="relative h-[calc(100dvh-6rem)] max-h-none min-h-[500px] md:h-[calc(100vh-6rem)] overflow-hidden overscroll-none rounded-3xl border border-slate-100 bg-white font-sans shadow-sm">
+    <div className="relative h-[calc(100dvh-6rem)] max-h-none min-h-0 md:h-[calc(100vh-6rem)] overflow-hidden overscroll-none rounded-xl sm:rounded-3xl border border-slate-100 bg-white font-sans shadow-sm">
       <div className="grid h-full grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)_240px]">
         {/* Left Sidebar */}
         <aside
@@ -826,6 +836,7 @@ export default function StaffPatientConsultationsPage() {
                   >
                     <RefreshCw className="h-4 w-4" />
                   </button>
+                  <button type="button" onClick={() => setShowChatProfile(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-[10px] font-bold text-slate-600 hover:bg-slate-50 lg:hidden"><ClipboardCheck className="h-3.5 w-3.5" /> Details</button>
 
                   {account?.role?.toUpperCase() === 'DOCTOR' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
                     selected.doctorAcceptedAt ? (
@@ -846,13 +857,13 @@ export default function StaffPatientConsultationsPage() {
                   {selected.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (
                     <button
                       type="button"
-                      disabled={selected.status !== 'IN_PROGRESS' && new Date(selected.scheduledStartTime).getTime() > Date.now()}
-                      title={selected.status !== 'IN_PROGRESS' && new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available at ${new Date(selected.scheduledStartTime).toLocaleString()}` : 'Join consultation'}
+                      disabled={!selected.doctorAcceptedAt || new Date(selected.scheduledStartTime).getTime() > Date.now()}
+                      title={!selected.doctorAcceptedAt ? 'Accept the consultation order first' : new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available at ${new Date(selected.scheduledStartTime).toLocaleString()}` : 'Join consultation'}
                       onClick={() => void joinConsultation(selected)}
                       className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1b7b68] px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300 sm:flex-none sm:px-3.5"
                     >
                       {selected.consultationType === 'VOICE' ? <Phone className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-                      <span>{selected.status !== 'IN_PROGRESS' && new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available ${new Date(selected.scheduledStartTime).toLocaleString()}` : selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
+                      <span>{!selected.doctorAcceptedAt ? 'Accept order first' : new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available ${new Date(selected.scheduledStartTime).toLocaleString()}` : selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
                     </button>
                   )}
 
@@ -1029,8 +1040,17 @@ export default function StaffPatientConsultationsPage() {
                   <div className="flex h-full items-center justify-center">
                     <Loader2 className="h-6 w-6 animate-spin text-[#1b7b68]" />
                   </div>
-                ) : (messages.length > 0 || prescriptions.length > 0) ? (
+                ) : (messages.length > 0 || prescriptions.length > 0 || Boolean(selected.doctorAcceptedAt)) ? (
                   <div className="mx-auto max-w-3xl space-y-3">
+                    {selected.doctorAcceptedAt && (
+                      <div className="flex justify-center py-1" role="status" aria-live="polite">
+                        <div className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-[11px] font-semibold text-emerald-800 shadow-sm">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          Dr. {selected.doctorAcceptedByName || String(account?.name || `${account?.firstName || ''} ${account?.lastName || ''}`.trim() || (typeof selected.doctorId === 'object' ? `${selected.doctorId.firstName || ''} ${selected.doctorId.lastName || ''}`.trim() : 'Doctor'))} Accepted your consultation order
+                          <span className="hidden sm:inline text-emerald-600">· {formatDate(selected.doctorAcceptedAt)}</span>
+                        </div>
+                      </div>
+                    )}
                     {labRequests.length > 0 && (
                       <section className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-3 sm:p-4">
                         <div className="mb-2 flex items-center gap-2"><FlaskConical className="h-4 w-4 text-violet-700" /><h3 className="text-xs font-bold text-violet-900">Laboratory requests</h3><span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-violet-700">{labRequests.length}</span></div>
@@ -1227,7 +1247,12 @@ export default function StaffPatientConsultationsPage() {
                 )}
               </div>
 
-              {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) ? (
+              {!['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && !selected.doctorAcceptedAt ? (
+                <div className="shrink-0 border-t border-amber-100 bg-amber-50 px-4 py-5 text-center">
+                  <p className="text-sm font-bold text-amber-900">Accept the consultation order to unlock chat</p>
+                  <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-amber-800">The patient and care team can exchange messages after the assigned doctor accepts this order.</p>
+                </div>
+              ) : !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) ? (
               <div className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
                 {attachmentFile && (
                   <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-2 text-xs text-slate-600">
@@ -1390,11 +1415,13 @@ export default function StaffPatientConsultationsPage() {
                 <div className="pt-2">
                   <button
                     type="button"
+                    disabled={!selected.doctorAcceptedAt || new Date(selected.scheduledStartTime).getTime() > Date.now()}
+                    title={!selected.doctorAcceptedAt ? 'Accept the consultation order first' : new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available at ${new Date(selected.scheduledStartTime).toLocaleString()}` : 'Start or join consultation'}
                     onClick={() => void joinConsultation(selected)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] py-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c]"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] py-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {selected.consultationType === 'VOICE' ? <Phone className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-                    <span>{selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
+                    <span>{!selected.doctorAcceptedAt ? 'Accept order first' : new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available ${new Date(selected.scheduledStartTime).toLocaleString()}` : selected.status === 'IN_PROGRESS' ? (selected.consultationType === 'VOICE' ? 'Join voice call' : 'Join video call') : (selected.consultationType === 'VOICE' ? 'Start voice call' : 'Start video call')}</span>
                   </button>
                 </div>
               )}
@@ -1411,7 +1438,7 @@ export default function StaffPatientConsultationsPage() {
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm sm:p-5" onClick={() => setShowChatProfile(false)}>
           <section role="dialog" aria-modal="true" aria-labelledby="staff-chat-profile-title" className="max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-100 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 py-4 backdrop-blur">
-              <div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse chat</p><h2 id="staff-chat-profile-title" className="mt-1 text-base font-bold text-slate-900">Chat profile</h2></div>
+              <div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse chat</p><h2 id="staff-chat-profile-title" className="mt-1 text-base font-bold text-slate-900">Consultation details</h2></div>
               <button type="button" onClick={() => setShowChatProfile(false)} aria-label="Close chat profile" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-6 p-5">
@@ -1419,6 +1446,23 @@ export default function StaffPatientConsultationsPage() {
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#e8f5f3] text-lg font-bold text-[#1b7b68]">{avatarLetters(patientName(selected))}</div>
                 <div className="min-w-0"><h3 className="break-words text-lg font-bold text-slate-900">{patientName(selected)}</h3><p className="mt-1 text-xs text-slate-500">Patient · {selected.consultationType} consultation</p><p className="mt-1 text-[11px] text-slate-400">{statusLabel(selected.status)} · {formatDate(selected.scheduledStartTime)}</p></div>
               </div>
+              <section className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Patient</p><p className="mt-1 break-words text-xs font-bold text-slate-800">{patientName(selected)}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">MRN</p><p className="mt-1 break-words text-xs font-semibold text-slate-700">{typeof selected.patientId === 'object' ? selected.patientId.mrn || 'Not available' : 'Not available'}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Phone</p><p className="mt-1 break-words text-xs font-semibold text-slate-700">{typeof selected.patientId === 'object' ? selected.patientId.phone || 'Not available' : 'Not available'}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Consultation type</p><p className="mt-1 text-xs font-semibold text-slate-700">{selected.consultationType} Consultation</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Status</p><p className="mt-1 text-xs font-semibold text-slate-700">{statusLabel(selected.status)}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Scheduled time</p><p className="mt-1 text-xs font-semibold text-slate-700">{formatDate(selected.scheduledStartTime)}</p></div>
+                </div>
+                <div className="mt-3"><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Consultation reason</p><p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">{selected.chiefComplaint || 'No reason provided.'}</p></div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {account?.role?.toUpperCase() === 'DOCTOR' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && (selected.doctorAcceptedAt ? <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Order accepted</span> : <button type="button" disabled={acceptingOrder} onClick={() => void acceptConsultationOrder()} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700 disabled:opacity-50">{acceptingOrder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}{acceptingOrder ? 'Accepting…' : 'Accept order'}</button>)}
+                  {account?.role?.toUpperCase() === 'DOCTOR' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && <button type="button" onClick={() => { setShowChatProfile(false); setShowLabRequestForm(true); }} className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] font-bold text-violet-700"><FlaskConical className="h-3.5 w-3.5" /> Lab request</button>}
+                  {account?.role?.toUpperCase() === 'DOCTOR' && <button type="button" onClick={() => { setShowChatProfile(false); setShowPrescriptionForm(true); }} className="inline-flex items-center gap-1.5 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-2 text-[10px] font-bold text-[#1b7b68]"><Pill className="h-3.5 w-3.5" /> Prescription</button>}
+                  {selected.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selected.status) && <button type="button" disabled={!selected.doctorAcceptedAt || new Date(selected.scheduledStartTime).getTime() > Date.now()} onClick={() => void joinConsultation(selected)} title={!selected.doctorAcceptedAt ? 'Accept order first' : new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available at ${formatDate(selected.scheduledStartTime)}` : 'Start video call'} className="inline-flex items-center gap-1.5 rounded-xl bg-[#1b7b68] px-3 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{selected.consultationType === 'VOICE' ? <Phone className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}{!selected.doctorAcceptedAt ? 'Accept order first' : new Date(selected.scheduledStartTime).getTime() > Date.now() ? `Available ${formatDate(selected.scheduledStartTime)}` : selected.status === 'IN_PROGRESS' ? 'Join call' : 'Start video call'}</button>}
+                </div>
+              </section>
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700"><Images className="h-4 w-4 text-[#1b7b68]" /> Media</h3>
                 {messages.filter((item) => item.attachmentUrl && String(item.attachmentMimeType || '').startsWith('image/')).length ? (

@@ -134,9 +134,9 @@ export default function TelemedicinePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const callTimeReady = (session: TelemedicineSession) => session.status === 'IN_PROGRESS' || new Date(session.scheduledStartTime).getTime() <= Date.now();
+  const callTimeReady = (session: TelemedicineSession) => { const scheduled = new Date(session.scheduledStartTime).getTime(); return Number.isFinite(scheduled) && Date.now() >= scheduled; };
   const openSessionCall = (session: TelemedicineSession) => {
-    if (!callTimeReady(session)) return;
+    if (!session.doctorAcceptedAt || !callTimeReady(session)) return;
     openTelemedicineCall(session._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(session._id)}`, `${session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push);
   };
 
@@ -254,6 +254,25 @@ export default function TelemedicinePage() {
       setLoading(false);
     }
   }, [isAuthenticated, isPatientPortal, isPatientLinked, refresh]);
+
+  // Keep acceptance status synchronized between patient and staff portals without
+  // reloading the entire page or resetting the open chat.
+  useEffect(() => {
+    if (!isAuthenticated || (isPatientPortal && !isPatientLinked)) return;
+    let active = true;
+    const syncSessions = async () => {
+      try {
+        const result = await telemedicineService.getSessions();
+        const items = Array.isArray(result.sessions) ? result.sessions : [];
+        if (active) setSessions((current) => items.map((item) => {
+          const previous = current.find((entry) => entry._id === item._id) as (TelemedicineSession & { lastMessageAt?: string }) | undefined;
+          return previous?.lastMessageAt && !(item as any).lastMessageAt ? { ...item, lastMessageAt: previous.lastMessageAt } as TelemedicineSession : item;
+        }));
+      } catch { /* Keep the last known session state if a poll fails. */ }
+    };
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void syncSessions(); }, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [isAuthenticated, isPatientPortal, isPatientLinked]);
 
   // Doctor directory booking links can preselect a doctor and open the booking form.
   useEffect(() => {
@@ -490,6 +509,10 @@ export default function TelemedicinePage() {
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
     if (!selectedSession) return;
+    if (!selectedSession.doctorAcceptedAt) {
+      setError('Messaging will unlock after the assigned doctor accepts your consultation order.');
+      return;
+    }
     if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status)) {
       setError('This consultation has ended. Messages are disabled. You can book a follow-up consultation.');
       return;
@@ -652,7 +675,7 @@ export default function TelemedicinePage() {
         </section>
       )}
 
-      <div className="grid h-[calc(100dvh-6.5rem)] min-h-[460px] max-h-none grid-cols-1 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:h-[calc(100vh-7rem)] md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
+      <div className="grid h-[calc(100dvh-6.5rem)] min-h-0 max-h-none grid-cols-1 overflow-hidden rounded-xl sm:rounded-3xl border border-slate-100 bg-white shadow-sm md:h-[calc(100vh-7rem)] md:min-h-[600px] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_260px]">
         <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-slate-100 bg-white`}>
           <div className="border-b border-slate-100 p-4">
             <div className="flex items-center justify-between gap-2">
@@ -768,14 +791,23 @@ export default function TelemedicinePage() {
                   }}
                   className="relative min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4"
                 >
-                  {messages.length === 0 && prescriptions.length === 0 ? (
+                  {messages.length === 0 && prescriptions.length === 0 && !selectedSession.doctorAcceptedAt ? (
                     <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]"><MessageCircle className="h-5 w-5" /></div>
-                      <p className="mt-3 text-xs font-semibold text-slate-600">No messages yet</p>
-                      <p className="mt-1 text-[10px] text-slate-400">Start a secure conversation with your care team below.</p>
+                      <p className="mt-3 text-xs font-semibold text-slate-600">{selectedSession.doctorAcceptedAt ? 'No messages yet' : 'Waiting for doctor acceptance'}</p>
+                      <p className="mt-1 text-center text-[10px] leading-5 text-slate-400">{selectedSession.doctorAcceptedAt ? 'Start a secure conversation with your care team below.' : 'Your consultation chat will unlock when the assigned doctor accepts your order.'}</p>
                     </div>
                   ) : (
                     <div className="mx-auto max-w-3xl space-y-3">
+                      {selectedSession.doctorAcceptedAt && (
+                        <div className="flex justify-center py-1" role="status" aria-live="polite">
+                          <div className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-[11px] font-semibold text-emerald-800 shadow-sm">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                            Dr. {displayName(selectedSession.doctorId)} Accepted your consultation order
+                            <span className="hidden sm:inline text-emerald-600">· {formatDateTime(selectedSession.doctorAcceptedAt)}</span>
+                          </div>
+                        </div>
+                      )}
                       {[
                         ...messages.map((message) => ({
                           kind: 'message' as const,
@@ -967,6 +999,11 @@ export default function TelemedicinePage() {
                       {paymentStartingFor === selectedSession._id && <Loader2 className="h-4 w-4 animate-spin" />} Pay ₦{Number(selectedSession.consultationFee || 0).toLocaleString()} securely
                     </button>
                   </div>
+                ) : !selectedSession.doctorAcceptedAt ? (
+                  <div className="shrink-0 border-t border-amber-100 bg-amber-50 px-4 py-5 text-center">
+                    <p className="text-sm font-bold text-amber-900">Waiting for doctor acceptance</p>
+                    <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-amber-800">You can start messaging when Dr. {displayName(selectedSession.doctorId)} accepts your consultation order.</p>
+                  </div>
                 ) : !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) ? (
                 <form onSubmit={sendMessage} className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
                   {messageAttachment && (
@@ -1042,12 +1079,12 @@ export default function TelemedicinePage() {
                 )}
                 {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
                   isPatientPortal ? (
-                    <button type="button" disabled={!callTimeReady(selectedSession) || (isPatientPortal && selectedSession.paymentStatus === 'PENDING')} onClick={() => openSessionCall(selectedSession)} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
-                      {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}
+                    <button type="button" disabled={!selectedSession.doctorAcceptedAt || !callTimeReady(selectedSession) || (isPatientPortal && selectedSession.paymentStatus === 'PENDING')} onClick={() => openSessionCall(selectedSession)} title={!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
+                      {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}
                     </button>
                   ) : (
-                    <button type="button" disabled={!callTimeReady(selectedSession)} onClick={() => openTelemedicineCall(selectedSession._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(selectedSession._id)}`, `${selectedSession.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push)} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
-                      <VideoIcon className="h-4 w-4" /> {!callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'}
+                    <button type="button" disabled={!selectedSession.doctorAcceptedAt || !callTimeReady(selectedSession)} onClick={() => openSessionCall(selectedSession)} title={!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
+                      <VideoIcon className="h-4 w-4" /> {!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'}
                     </button>
                   )
                 )}
@@ -1139,7 +1176,7 @@ export default function TelemedicinePage() {
 
       {showSessionDetails && selectedSession && (
         <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4 lg:hidden" onClick={() => setShowSessionDetails(false)}>
-          <section role="dialog" aria-modal="true" aria-labelledby="session-details-title" className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border border-slate-100 bg-white p-5 shadow-2xl sm:max-w-lg sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
+          <section role="dialog" aria-modal="true" aria-labelledby="session-details-title" className="max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-slate-100 bg-white p-5 shadow-2xl sm:max-w-lg sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXVerse virtual care</p>
@@ -1147,15 +1184,29 @@ export default function TelemedicinePage() {
               </div>
               <button type="button" onClick={() => setShowSessionDetails(false)} aria-label="Close consultation details" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
-            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="break-words text-sm font-semibold text-slate-800">{selectedSession.chiefComplaint || 'Consultation details'}</p>
-              <p className="flex items-start gap-2 text-xs leading-5 text-slate-500"><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /> Scheduled: {formatDateTime(selectedSession.scheduledStartTime)}</p>
-              {selectedSession.actualStartTime && <p className="text-xs leading-5 text-slate-500">Call started: {formatDateTime(selectedSession.actualStartTime)}{selectedSession.endTime ? ` · Ended: ${formatDateTime(selectedSession.endTime)}` : ' · In progress'}{typeof selectedSession.durationMinutes === 'number' ? ` · Duration: ${selectedSession.durationMinutes} min` : ''}</p>}
-              <p className="text-xs text-slate-500">Status: {statusLabels[selectedSession.status]}</p>
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">Session</p>
+                <p className="mt-1 break-words text-sm font-bold text-slate-800">{selectedSession.consultationType} session</p>
+                <p className="mt-1 flex items-start gap-2 text-xs leading-5 text-slate-600"><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /> {formatDateTime(selectedSession.scheduledStartTime)}</p>
+                <p className="mt-2 text-xs text-slate-600"><span className="font-semibold">Availability:</span> {callTimeReady(selectedSession) ? 'Available now' : `Available ${formatDateTime(selectedSession.scheduledStartTime)}`}</p>
+                <p className="mt-2 text-xs text-slate-600"><span className="font-semibold">Order:</span> {selectedSession.doctorAcceptedAt ? 'Accepted by doctor' : 'Waiting for doctor acceptance'}</p>
+                <p className="mt-2 text-xs text-slate-600"><span className="font-semibold">Status:</span> {statusLabels[selectedSession.status]}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-600"><span className="font-semibold">Consultation reason:</span> {selectedSession.chiefComplaint || 'No reason provided.'}</p>
+                {selectedSession.actualStartTime && <p className="mt-2 text-xs leading-5 text-slate-500">Call started: {formatDateTime(selectedSession.actualStartTime)}{selectedSession.endTime ? ` · Ended: ${formatDateTime(selectedSession.endTime)}` : ' · In progress'}{typeof selectedSession.durationMinutes === 'number' ? ` · Duration: ${selectedSession.durationMinutes} min` : ''}</p>}
+              </section>
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#1b7b68]">Care team</p>
+                <div className="mt-3 flex items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68]">{initials(`Dr. ${displayName(selectedSession.doctorId)}`)}</div><div className="min-w-0"><p className="break-words text-xs font-bold text-slate-800">Dr. {displayName(selectedSession.doctorId)}</p><p className="text-[10px] text-slate-400">Consulting doctor</p></div></div>
+              </section>
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <div className="flex items-center justify-between gap-2"><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#1b7b68]">Laboratory requests</p><span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600">{labRequests.length}</span></div>
+                {labRequests.length ? <div className="mt-3 space-y-2">{labRequests.map((order: any, index: number) => <div key={String(order._id || order.id || index)} className="rounded-xl border border-slate-100 bg-slate-50 p-3"><p className="text-xs font-bold text-slate-800">{order.testName || order.panelName || 'Laboratory investigation'}</p><p className="mt-1 text-[10px] text-slate-500">{String(order.status || 'PENDING').replace(/_/g, ' ')} · {String(order.priority || 'ROUTINE').replace(/_/g, ' ')}</p>{order.notes && <p className="mt-1 whitespace-pre-wrap text-[11px] text-slate-600">{order.notes}</p>}</div>)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">No investigations have been requested for this consultation.</p>}
+              </section>
             </div>
             <div className="mt-4 space-y-2">
               {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
-                <button type="button" disabled={!callTimeReady(selectedSession)} onClick={() => { openTelemedicineCall(selectedSession._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(selectedSession._id)}`, `${selectedSession.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push); setShowSessionDetails(false); }} title={!callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}</button>
+                <button type="button" disabled={!selectedSession.doctorAcceptedAt || !callTimeReady(selectedSession) || (isPatientPortal && selectedSession.paymentStatus === 'PENDING')} onClick={() => { openSessionCall(selectedSession); setShowSessionDetails(false); }} title={!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}</button>
               )}
               <button type="button" onClick={() => {
                 setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));
@@ -1166,6 +1217,7 @@ export default function TelemedicinePage() {
                 setShowSessionDetails(false);
                 setShowBooking(true);
               }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#cde7e1] bg-[#f0faf7] px-3 py-3 text-xs font-bold text-[#1b7b68]"><Plus className="h-4 w-4" /> Book follow-up</button>
+              {isPatientPortal && selectedSession.status === 'WAITING_ROOM' && <button type="button" onClick={() => { void changeStatus('CANCELLED'); setShowSessionDetails(false); }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-3 text-xs font-bold text-rose-700">Cancel consultation</button>}
             </div>
           </section>
         </div>
