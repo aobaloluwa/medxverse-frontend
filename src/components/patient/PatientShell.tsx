@@ -16,6 +16,7 @@ import {
   UserRound,
   Stethoscope,
   Video,
+  Siren,
   X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -25,6 +26,7 @@ type PatientShellProps = { children: React.ReactNode };
 
 const navigation = [
   { label: "Overview", href: "/portal", icon: Home },
+  { label: "Emergency Rescue SOS", href: "/portal/emergency", icon: Siren },
   { label: "Find a doctor", href: "/portal/doctors", icon: Stethoscope },
   { label: "Virtual care", href: "/portal/telemedicine", icon: Video },
   { label: "Notifications", href: "/portal/notifications", icon: Bell },

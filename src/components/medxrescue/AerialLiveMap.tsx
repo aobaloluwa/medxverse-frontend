@@ -19,19 +19,14 @@ interface AerialLiveMapProps {
 }
 
 const CITIES = [
-  { name: 'Lagos (Central)', lat: 6.5244, lng: 3.3792 },
-  { name: 'Lagos (Victoria Island)', lat: 6.4281, lng: 3.4219 },
-  { name: 'Lagos (Lekki Phase 1)', lat: 6.4474, lng: 3.4723 },
-  { name: 'Lagos (Ikeja)', lat: 6.6018, lng: 3.3515 },
-  { name: 'Abuja (FCT)', lat: 9.0765, lng: 7.3986 },
-  { name: 'Port Harcourt', lat: 4.8156, lng: 7.0498 },
-  { name: 'Kano', lat: 12.0022, lng: 8.5920 },
-  { name: 'Ibadan', lat: 7.3775, lng: 3.9470 },
-  { name: 'Enugu', lat: 6.4584, lng: 7.5464 },
-  { name: 'Benin City', lat: 6.3350, lng: 5.6037 },
-  { name: 'Kaduna', lat: 10.5105, lng: 7.4165 },
-  { name: 'Calabar', lat: 4.9757, lng: 8.3417 },
-  { name: 'Asaba', lat: 6.1983, lng: 6.7275 },
+  { name: 'Ogbomoso (Takie Central)', lat: 8.1336, lng: 4.2401 },
+  { name: 'Ogbomoso (LAUTECH LTH Base)', lat: 8.1580, lng: 4.2620 },
+  { name: 'Ogbomoso (BUTH Area)', lat: 8.1290, lng: 4.2480 },
+  { name: 'Ogbomoso (General Hospital)', lat: 8.1390, lng: 4.2510 },
+  { name: 'Ogbomoso (Sabo Market)', lat: 8.1250, lng: 4.2380 },
+  { name: 'Ogbomoso (Caretaker Area)', lat: 8.1420, lng: 4.2490 },
+  { name: 'Ibadan (Oyo State Capital)', lat: 7.3775, lng: 3.9470 },
+  { name: 'Oyo Town (Oyo State)', lat: 7.8430, lng: 3.9310 },
 ];
 
 export default function AerialLiveMap({
@@ -64,12 +59,21 @@ export default function AerialLiveMap({
   const [isLocating, setIsLocating] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [locationStatus, setLocationStatus] = useState('');
+  const [movementTick, setMovementTick] = useState(0);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Initialize Leaflet map dynamically
+  // Live ambulance animation tick for smooth road gliding
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMovementTick(prev => (prev + 1) % 360);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Initialize Leaflet map dynamically centered on Ogbomoso, Oyo State
   useEffect(() => {
     if (!isClient || !mapContainerRef.current) return;
 
@@ -88,9 +92,9 @@ export default function AerialLiveMap({
       if (!mounted || !mapContainerRef.current) return;
 
       if (!mapInstanceRef.current) {
-        // High street detail default zoom level 16
+        // High street detail default zoom level 16 centered on Ogbomoso, Oyo State
         const map = L.map(mapContainerRef.current, {
-          center: [6.5244, 3.3792],
+          center: [8.1336, 4.2401],
           zoom: 16,
           maxZoom: 20,
           zoomControl: false,
@@ -131,6 +135,7 @@ export default function AerialLiveMap({
 
         const layerGroup = L.layerGroup().addTo(map);
         layerGroupRef.current = layerGroup;
+
         mapInstanceRef.current = map;
         setLeafletLoaded(true);
       }
@@ -143,7 +148,7 @@ export default function AerialLiveMap({
     };
   }, [isClient]);
 
-  // Switch Tile Layer when mapType changes
+  // Switch Tile Layer
   useEffect(() => {
     if (!mapInstanceRef.current || !tileLayerRef.current) return;
     const L = (window as any).L;
@@ -162,9 +167,9 @@ export default function AerialLiveMap({
       maxZoom: 20,
       attribution: '&copy; OpenStreetMap &copy; CARTO &copy; Esri',
     }).addTo(mapInstanceRef.current);
+
     tileLayerRef.current = newLayer;
 
-    // Show/hide street name overlays in Satellite mode
     if (overlayGroupRef.current) {
       if (mapType === 'AERIAL') {
         overlayGroupRef.current.addTo(mapInstanceRef.current);
@@ -217,23 +222,23 @@ export default function AerialLiveMap({
       },
       (err) => {
         setIsLocating(false);
-        setLocationStatus('Could not retrieve GPS location. Please allow location permissions.');
+        setLocationStatus('Could not retrieve GPS location.');
         setTimeout(() => setLocationStatus(''), 5000);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
-  // Fly to selected city at Street Zoom Level 16
+  // Fly to selected city
   const handleCitySelect = (lat: number, lng: number) => {
     if (mapInstanceRef.current) {
       mapInstanceRef.current.flyTo([lat, lng], 16, { duration: 1.5 });
-      setLocationStatus('Zoomed to street level.');
+      setLocationStatus('Shifted to selected city.');
       setTimeout(() => setLocationStatus(''), 3000);
     }
   };
 
-  // Zoom directly to high street level (Level 17)
+  // Zoom directly to street level (17x)
   const handleStreetZoom = () => {
     if (mapInstanceRef.current) {
       const currentCenter = mapInstanceRef.current.getCenter();
@@ -243,12 +248,12 @@ export default function AerialLiveMap({
     }
   };
 
-  // Explicitly fit bounds of all markers
+  // Fit Bounds to all units
   const handleFitAllUnits = () => {
-    if (currentBoundsRef.current.length > 0 && mapInstanceRef.current) {
+    if (mapInstanceRef.current && currentBoundsRef.current.length > 0) {
       try {
         mapInstanceRef.current.fitBounds(currentBoundsRef.current, { padding: [60, 60], maxZoom: 16 });
-        setLocationStatus('Zoomed out to show all fleet units.');
+        setLocationStatus('Fitting all active units & emergency pins.');
         setTimeout(() => setLocationStatus(''), 3000);
       } catch (e) {
         // ignore
@@ -256,7 +261,7 @@ export default function AerialLiveMap({
     }
   };
 
-  // Geocode Search for any street name / place name
+  // Geocode Search for any place name
   const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -265,7 +270,7 @@ export default function AerialLiveMap({
     setLocationStatus('Searching street address…');
 
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.trim())}&limit=1`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.trim() + ', Ogbomoso, Oyo State, Nigeria')}&limit=1`);
       const data = await res.json();
 
       if (data && data.length > 0) {
@@ -278,18 +283,18 @@ export default function AerialLiveMap({
           setTimeout(() => setLocationStatus(''), 4000);
         }
       } else {
-        setLocationStatus('Street location not found. Try typing street or landmark name.');
+        setLocationStatus('Street location not found.');
         setTimeout(() => setLocationStatus(''), 4000);
       }
     } catch (err) {
-      setLocationStatus('Geocoding search failed. Check network connection.');
+      setLocationStatus('Search failed.');
       setTimeout(() => setLocationStatus(''), 4000);
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Render Markers and Polylines
+  // Render Markers and Polylines with Live Moving Ambulances
   useEffect(() => {
     if (!leafletLoaded || !mapInstanceRef.current || !layerGroupRef.current) return;
     const map = mapInstanceRef.current;
@@ -355,12 +360,19 @@ export default function AerialLiveMap({
       });
     });
 
-    // Render Vehicles (Ambulances) Uber-Style
+    // Render Live Moving Ambulances Uber-Style
     vehicles.forEach(vehicle => {
       const coords = vehicle.location?.coordinates;
       if (!coords || coords.length !== 2) return;
       const [lng, lat] = coords;
-      bounds.push([lat, lng]);
+
+      // Smooth Live Movement Simulation Offset along Ogbomoso Streets
+      const charCode = (vehicle.registrationNumber || 'AMB').charCodeAt(0);
+      const moveOffset = Math.sin((movementTick * 0.05) + charCode) * 0.0015;
+      const currentLat = lat + moveOffset;
+      const currentLng = lng + (moveOffset * 0.6);
+
+      bounds.push([currentLat, currentLng]);
 
       const isSelected = selectedVehicleId === vehicle.id;
       const isDispatched = vehicle.status === 'DISPATCHED' || vehicle.activeIncident;
@@ -375,13 +387,13 @@ export default function AerialLiveMap({
         : 'bg-slate-700 text-slate-200 border-slate-500';
 
       const html = `
-        <div class="relative cursor-pointer flex flex-col items-center group">
+        <div class="relative cursor-pointer flex flex-col items-center group transition-all duration-700">
           <!-- Pulse Ring -->
           <div class="absolute -inset-2 rounded-full border-2 ${ringColor} ${isDispatched ? 'animate-ping' : ''}"></div>
 
           <!-- Vehicle Badge Uber Style -->
           <div class="relative flex items-center gap-2 rounded-2xl border-2 ${badgeColor} px-3 py-1.5 shadow-2xl transition-all duration-300 hover:scale-115 ${isSelected ? 'scale-110 ring-4 ring-amber-300' : ''}">
-            <span class="flex h-6 w-6 items-center justify-center rounded-lg bg-black/30 text-xs">🚑</span>
+            <span class="flex h-6 w-6 items-center justify-center rounded-lg bg-black/30 text-xs ${isDispatched ? 'animate-bounce' : ''}">🚑</span>
             <div class="flex flex-col text-left">
               <span class="text-xs font-black uppercase tracking-wide leading-none">${vehicle.registrationNumber}</span>
               <span class="text-[9px] font-bold opacity-90 leading-tight">${vehicle.vehicleClass?.replace(/_/g, ' ') || 'Ambulance'}</span>
@@ -395,10 +407,10 @@ export default function AerialLiveMap({
       `;
 
       const icon = L.divIcon({ html, className: 'custom-ambulance-marker', iconSize: [140, 50], iconAnchor: [70, 48] });
-      const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
+      const marker = L.marker([currentLat, currentLng], { icon }).addTo(layerGroup);
 
       marker.on('click', () => {
-        map.flyTo([lat, lng], 17, { duration: 1 });
+        map.flyTo([currentLat, currentLng], 17, { duration: 1 });
         onSelectVehicle?.(vehicle.id);
         setActivePopupInfo({ type: 'vehicle', item: vehicle });
       });
@@ -406,7 +418,7 @@ export default function AerialLiveMap({
       // Draw Polyline connecting assigned ambulance to its active incident
       if (vehicle.activeIncident?.location?.coordinates) {
         const [incLng, incLat] = vehicle.activeIncident.location.coordinates;
-        L.polyline([[lat, lng], [incLat, incLng]], {
+        L.polyline([[currentLat, currentLng], [incLat, incLng]], {
           color: '#f43f5e',
           weight: 5,
           dashArray: '8, 12',
@@ -427,7 +439,7 @@ export default function AerialLiveMap({
         // Ignore fitBounds errors
       }
     }
-  }, [leafletLoaded, vehicles, incidents, facilities, selectedVehicleId, selectedIncidentId, onSelectVehicle, onSelectIncident]);
+  }, [leafletLoaded, vehicles, incidents, facilities, selectedVehicleId, selectedIncidentId, onSelectVehicle, onSelectIncident, movementTick]);
 
   return (
     <div className={`relative isolate z-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ${className}`}>
@@ -449,7 +461,7 @@ export default function AerialLiveMap({
 
         {/* City Dropdown Selector */}
         <select
-          aria-label="Select city to jump to"
+          aria-label="Select Ogbomoso area hub"
           onChange={(e) => {
             const val = e.target.value;
             if (val) {
@@ -459,7 +471,7 @@ export default function AerialLiveMap({
           }}
           className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none hover:border-[#1b7b68] focus:border-[#1b7b68]"
         >
-          <option value="">Jump to City…</option>
+          <option value="">Jump Ogbomoso Hub…</option>
           {CITIES.map((c) => (
             <option key={c.name} value={`${c.lat},${c.lng}`}>
               📍 {c.name}
@@ -474,7 +486,7 @@ export default function AerialLiveMap({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Type street/address…"
+              placeholder="Search Ogbomoso address…"
               className="w-32 sm:w-44 rounded-xl border border-slate-200 bg-slate-50 py-1.5 pl-3 pr-7 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:border-[#1b7b68]"
             />
             <button

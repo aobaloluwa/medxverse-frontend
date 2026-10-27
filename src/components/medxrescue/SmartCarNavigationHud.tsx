@@ -18,19 +18,14 @@ interface SmartCarNavigationHudProps {
 }
 
 const CITIES = [
-  { name: 'Lagos (Central)', lat: 6.5244, lng: 3.3792 },
-  { name: 'Lagos (Victoria Island)', lat: 6.4281, lng: 3.4219 },
-  { name: 'Lagos (Lekki Phase 1)', lat: 6.4474, lng: 3.4723 },
-  { name: 'Lagos (Ikeja)', lat: 6.6018, lng: 3.3515 },
-  { name: 'Abuja (FCT)', lat: 9.0765, lng: 7.3986 },
-  { name: 'Port Harcourt', lat: 4.8156, lng: 7.0498 },
-  { name: 'Kano', lat: 12.0022, lng: 8.5920 },
-  { name: 'Ibadan', lat: 7.3775, lng: 3.9470 },
-  { name: 'Enugu', lat: 6.4584, lng: 7.5464 },
-  { name: 'Benin City', lat: 6.3350, lng: 5.6037 },
-  { name: 'Kaduna', lat: 10.5105, lng: 7.4165 },
-  { name: 'Calabar', lat: 4.9757, lng: 8.3417 },
-  { name: 'Asaba', lat: 6.1983, lng: 6.7275 },
+  { name: 'Ogbomoso (Takie Central)', lat: 8.1336, lng: 4.2401 },
+  { name: 'Ogbomoso (LAUTECH LTH Base)', lat: 8.1580, lng: 4.2620 },
+  { name: 'Ogbomoso (BUTH Area)', lat: 8.1290, lng: 4.2480 },
+  { name: 'Ogbomoso (General Hospital)', lat: 8.1390, lng: 4.2510 },
+  { name: 'Ogbomoso (Sabo Market)', lat: 8.1250, lng: 4.2380 },
+  { name: 'Ogbomoso (Caretaker Area)', lat: 8.1420, lng: 4.2490 },
+  { name: 'Ibadan (Oyo State Capital)', lat: 7.3775, lng: 3.9470 },
+  { name: 'Oyo Town (Oyo State)', lat: 7.8430, lng: 3.9310 },
 ];
 
 export default function SmartCarNavigationHud({
@@ -62,7 +57,7 @@ export default function SmartCarNavigationHud({
   const [distanceKm, setDistanceKm] = useState(3.4);
   const [progressPercent, setProgressPercent] = useState(35);
   const [isDriving, setIsDriving] = useState(true);
-  const [nextTurnStreet, setNextTurnStreet] = useState('E Veterans Way');
+  const [nextTurnStreet, setNextTurnStreet] = useState('Takie - LAUTECH Express Way');
   const [nextTurnDistance, setNextTurnDistance] = useState('250 m');
   const [sirenActive, setSirenActive] = useState(true);
 
@@ -77,11 +72,11 @@ export default function SmartCarNavigationHud({
   // Selected or active vehicle & target
   const activeVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || {
     id: 'demo-amb-1',
-    registrationNumber: 'AMB-001-LX',
+    registrationNumber: 'AMB-001-OGB',
     makeModel: 'Mercedes-Benz Sprinter ALS',
     vehicleClass: 'ADVANCED_LIFE_SUPPORT',
     status: 'EN_ROUTE',
-    location: { type: 'Point', coordinates: [3.3792, 6.5244] },
+    location: { type: 'Point', coordinates: [4.2620, 8.1580] },
   };
 
   const activeIncident = incidents.find(i => i.id === selectedIncidentId) || incidents[0] || {
@@ -89,14 +84,14 @@ export default function SmartCarNavigationHud({
     reference: 'MRX-SOS-9921',
     priority: 'CRITICAL',
     chiefComplaint: 'Acute Chest Pain & Breathing Difficulty',
-    landmark: 'Ikeja City Mall, Alausa, Ikeja',
-    location: { type: 'Point', coordinates: [3.3515, 6.6018] }
+    landmark: 'Takie Square, Ogbomoso, Oyo State',
+    location: { type: 'Point', coordinates: [4.2430, 8.1350] }
   };
 
   const activeFacility = facilities[0] || {
     id: 'demo-fac-1',
-    name: 'LASUTH Emergency Trauma Base',
-    location: { type: 'Point', coordinates: [3.3450, 6.5910] }
+    name: 'LAUTECH Teaching Hospital (LTH), Ogbomoso',
+    location: { type: 'Point', coordinates: [4.2620, 8.1580] }
   };
 
   useEffect(() => {
