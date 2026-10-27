@@ -430,9 +430,9 @@ export default function AerialLiveMap({
   }, [leafletLoaded, vehicles, incidents, facilities, selectedVehicleId, selectedIncidentId, onSelectVehicle, onSelectIncident]);
 
   return (
-    <div className={`relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ${className}`}>
-      {/* Top White Map Control Bar */}
-      <div className="absolute left-4 top-4 z-[1000] flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 text-slate-800 shadow-xl backdrop-blur-md max-w-[95%]">
+    <div className={`relative isolate z-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ${className}`}>
+      {/* Top White Map Control Bar (z-[2000] above Leaflet z-400..1000) */}
+      <div className="absolute left-4 top-4 z-[2000] flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 text-slate-800 shadow-xl backdrop-blur-md max-w-[95%]">
 
         {/* Quick GPS "My Location" Button */}
         <button
@@ -548,13 +548,13 @@ export default function AerialLiveMap({
 
       {/* Geolocation Toast Notification */}
       {locationStatus && (
-        <div className="absolute left-4 top-20 z-[1000] rounded-xl border border-teal-200 bg-white/95 px-3.5 py-2 text-xs font-bold text-[#1b7b68] shadow-lg backdrop-blur-md">
+        <div className="absolute left-4 top-20 z-[2000] rounded-xl border border-teal-200 bg-white/95 px-3.5 py-2 text-xs font-bold text-[#1b7b68] shadow-lg backdrop-blur-md">
           {locationStatus}
         </div>
       )}
 
       {/* White Map Legend Overlay */}
-      <div className="absolute bottom-4 left-4 z-[1000] flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-2.5 text-xs text-slate-800 shadow-xl backdrop-blur-md">
+      <div className="absolute bottom-4 left-4 z-[2000] flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-2.5 text-xs text-slate-800 shadow-xl backdrop-blur-md">
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#1b7b68] shadow-sm"></span>
           <span className="font-bold text-slate-800">Available Ambulance ({vehicles.filter(v => v.status === 'AVAILABLE').length})</span>
@@ -578,7 +578,7 @@ export default function AerialLiveMap({
 
       {/* Floating Active Info Drawer */}
       {activePopupInfo && (
-        <div className="absolute right-4 top-4 z-[1000] max-w-sm rounded-3xl border border-slate-200 bg-white/95 p-5 text-slate-800 shadow-2xl backdrop-blur-xl">
+        <div className="absolute right-4 top-4 z-[2000] max-w-sm rounded-3xl border border-slate-200 bg-white/95 p-5 text-slate-800 shadow-2xl backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
             <div>
               <span className="text-[10px] font-black uppercase tracking-widest text-[#1b7b68]">
