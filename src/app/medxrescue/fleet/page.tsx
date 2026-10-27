@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import DynamicAerialMap from '@/components/medxrescue/DynamicAerialMap';
+import DynamicSmartCarHud from '@/components/medxrescue/DynamicSmartCarHud';
 import { medxRescueService, type LiveFleetData } from '@/services/medxrescue.service';
-import { Ambulance, ArrowLeft, RefreshCw, Siren, ShieldCheck, HeartPulse } from 'lucide-react';
+import { Ambulance, ArrowLeft, RefreshCw, Siren, ShieldCheck, HeartPulse, Gauge, Layers } from 'lucide-react';
 
 export default function MedxRescueFleetRadarPage() {
+  const [displayMode, setDisplayMode] = useState<'SMART_CAR_HUD' | 'AERIAL_MAP'>('SMART_CAR_HUD');
   const [fleet, setFleet] = useState<LiveFleetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
@@ -61,14 +63,32 @@ export default function MedxRescueFleetRadarPage() {
               </span>
               <div>
                 <h1 className="text-base font-black tracking-tight text-white flex items-center gap-2">
-                  MedXRescue Nexus <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">LIVE AERIAL RADAR</span>
+                  MedXRescue Nexus <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-bold text-cyan-400 border border-cyan-500/30">SMART CAR TELEMETRY</span>
                 </h1>
-                <p className="text-xs text-slate-400">Uber-style real-time ambulance satellite radar &amp; emergency coordinate overlay</p>
+                <p className="text-xs text-slate-400">Futuristic smart-car cockpit navigation &amp; ambulance movement dashboard</p>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Display Mode Toggle */}
+            <div className="flex rounded-xl bg-slate-800 p-1 font-bold text-xs">
+              <button
+                type="button"
+                onClick={() => setDisplayMode('SMART_CAR_HUD')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${displayMode === 'SMART_CAR_HUD' ? 'bg-cyan-500 text-slate-950 font-black shadow' : 'text-slate-300 hover:text-white'}`}
+              >
+                <Gauge size={14} /> Smart Car HUD
+              </button>
+              <button
+                type="button"
+                onClick={() => setDisplayMode('AERIAL_MAP')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${displayMode === 'AERIAL_MAP' ? 'bg-cyan-500 text-slate-950 font-black shadow' : 'text-slate-300 hover:text-white'}`}
+              >
+                <Layers size={14} /> Aerial Satellite Map
+              </button>
+            </div>
+
             <button
               onClick={() => void seedFleet()}
               disabled={seeding}
@@ -97,8 +117,8 @@ export default function MedxRescueFleetRadarPage() {
         {/* Stats Strip */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Radar Fleet</p>
-            <p className="mt-1 text-2xl font-black text-emerald-400">{fleet?.vehicles.length ?? '—'}</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Active Fleet</p>
+            <p className="mt-1 text-2xl font-black text-cyan-400">{fleet?.vehicles.length ?? '—'}</p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Available Ambulances</p>
@@ -114,16 +134,26 @@ export default function MedxRescueFleetRadarPage() {
           </div>
         </div>
 
-        {/* Satellite Map */}
-        <DynamicAerialMap
-          vehicles={fleet?.vehicles || []}
-          incidents={fleet?.incidents || []}
-          facilities={fleet?.facilities || []}
-          onRefresh={() => void loadFleet()}
-          loading={loading}
-          heightClass="h-[720px]"
-        />
+        {/* Active Display Component */}
+        {displayMode === 'SMART_CAR_HUD' ? (
+          <DynamicSmartCarHud
+            vehicles={fleet?.vehicles || []}
+            incidents={fleet?.incidents || []}
+            facilities={fleet?.facilities || []}
+            heightClass="h-[720px]"
+          />
+        ) : (
+          <DynamicAerialMap
+            vehicles={fleet?.vehicles || []}
+            incidents={fleet?.incidents || []}
+            facilities={fleet?.facilities || []}
+            onRefresh={() => void loadFleet()}
+            loading={loading}
+            heightClass="h-[720px]"
+          />
+        )}
       </div>
     </main>
   );
 }
+

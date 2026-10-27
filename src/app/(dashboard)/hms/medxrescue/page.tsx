@@ -18,6 +18,8 @@ import {
   type LiveFleetData,
 } from '@/services/medxrescue.service';
 import DynamicAerialMap from '@/components/medxrescue/DynamicAerialMap';
+import DynamicSmartCarHud from '@/components/medxrescue/DynamicSmartCarHud';
+import { Gauge } from 'lucide-react';
 
 const PRIORITIES: Exclude<IncidentPriority, 'UNTRIAGED'>[] = ['ROUTINE', 'URGENT', 'CRITICAL'];
 const ACTIVE_STATUSES: IncidentStatus[] = [
@@ -53,7 +55,7 @@ function IncidentMap({ incident }: { incident: RescueIncident | null }) {
 }
 
 export default function MedxRescueDispatchPage() {
-  const [activeTab, setActiveTab] = useState<'RADAR' | 'CONSOLE'>('RADAR');
+  const [activeTab, setActiveTab] = useState<'SMART_CAR' | 'RADAR' | 'CONSOLE'>('SMART_CAR');
   const [incidents, setIncidents] = useState<RescueIncident[]>([]);
   const [liveFleet, setLiveFleet] = useState<LiveFleetData | null>(null);
   const [total, setTotal] = useState(0);
@@ -275,10 +277,17 @@ export default function MedxRescueDispatchPage() {
         <div className="flex rounded-xl bg-slate-200/80 p-1 font-bold text-xs">
           <button
             type="button"
+            onClick={() => setActiveTab('SMART_CAR')}
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 transition ${activeTab === 'SMART_CAR' ? 'bg-[#1b7b68] text-white shadow' : 'text-slate-700 hover:text-slate-900'}`}
+          >
+            <Gauge size={14} /> Smart Car HUD
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('RADAR')}
             className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 transition ${activeTab === 'RADAR' ? 'bg-[#1b7b68] text-white shadow' : 'text-slate-700 hover:text-slate-900'}`}
           >
-            <Crosshair size={14} /> Aerial Satellite Radar
+            <Crosshair size={14} /> Satellite Radar
           </button>
           <button
             type="button"
@@ -308,7 +317,20 @@ export default function MedxRescueDispatchPage() {
     {error && <div role="alert" className="flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"><AlertCircle size={18} className="shrink-0" />{error}</div>}
     {notice && <div role="status" className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 size={18} className="shrink-0" />{notice}</div>}
 
-    {/* Radar Tab View */}
+    {/* Smart Car Cockpit HUD View */}
+    {activeTab === 'SMART_CAR' && (
+      <section className="space-y-4">
+        <DynamicSmartCarHud
+          vehicles={liveFleet?.vehicles || []}
+          incidents={liveFleet?.incidents || []}
+          facilities={liveFleet?.facilities || []}
+          selectedVehicleId={selectedKey}
+          heightClass="h-[680px]"
+        />
+      </section>
+    )}
+
+    {/* Satellite Radar View */}
     {activeTab === 'RADAR' && (
       <section className="space-y-4">
         <DynamicAerialMap
