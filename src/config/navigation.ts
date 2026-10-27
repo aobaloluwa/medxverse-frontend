@@ -24,6 +24,7 @@ import {
   Baby,
   BadgeDollarSign,
   ClipboardList,
+  Ambulance,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -55,6 +56,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hms/emergency',
       icon: Siren,
       moduleKey: 'emergency',
+    },
+
+    {
+      label: 'MedXRescue Nexus',
+      href: '/hms/medxrescue',
+      icon: Ambulance,
     },
 
     {
