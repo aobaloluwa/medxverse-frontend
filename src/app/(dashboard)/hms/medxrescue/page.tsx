@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   AlertCircle, Ambulance, CheckCircle2, Clock3, ExternalLink, Filter, Loader2,
   MapPin, RefreshCw, Search, Send, ShieldAlert, Siren, Activity, ShieldCheck,
-  PhoneCall, Users, AlertTriangle, XCircle, Crosshair,
+  PhoneCall, Users, AlertTriangle, XCircle, Crosshair, Video, Phone
 } from 'lucide-react';
+import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
 import {
   medxRescueService,
   type IncidentPriority,
@@ -53,6 +55,7 @@ function IncidentMap({ incident }: { incident: RescueIncident | null }) {
 }
 
 export default function MedxRescueDispatchPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'RADAR' | 'CONSOLE'>('RADAR');
   const [incidents, setIncidents] = useState<RescueIncident[]>([]);
   const [liveFleet, setLiveFleet] = useState<LiveFleetData | null>(null);
@@ -350,6 +353,18 @@ export default function MedxRescueDispatchPage() {
             <p className="mt-4 text-sm leading-6 text-slate-700">{selected.chiefComplaint}</p>
             {selected.additionalDetails && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-500">{selected.additionalDetails}</p>}
             <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Caller</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{selected.callerName || 'Name not supplied'}</p><a href={selected.callerPhone ? `tel:${selected.callerPhone}` : undefined} className="mt-1 block break-all text-xs text-[#1b7b68]">{selected.callerPhone || 'Phone unavailable'}</a></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Priority</p><p className="mt-1 text-sm font-bold text-slate-800">{label(selected.priority)}</p><p className="mt-1 text-xs text-slate-500">Dispatcher reviewed priority</p></div></div>
+
+            {/* Direct 911 WebRTC Call Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const ref = selected.publicReference || selected.id;
+                openTelemedicineCall(`emergency-911-${ref}`, '/hms/medxrescue', `Emergency 911 Call (${ref})`, (url) => router.push(url));
+              }}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black text-white hover:bg-rose-700 shadow-md transition"
+            >
+              <PhoneCall size={15} /> 📞 Answer / Place 911 Call with Patient
+            </button>
             <div className="mt-4"><p className="text-xs font-bold text-slate-600">Reported location</p><p className="mt-1 text-sm text-slate-700">{selected.landmark || selected.locationDescription || 'No landmark supplied'}</p><p className="mt-1 text-xs text-slate-500">{coordinates(selected)}{selected.locationAccuracyMeters ? ` · GPS accuracy ±${Math.round(selected.locationAccuracyMeters)} m` : ''}</p><div className="mt-3"><IncidentMap incident={selected} /></div></div>
             <div className="mt-5 rounded-xl border border-slate-200 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-extrabold text-slate-900">Structured triage answers</h3><span className="text-[10px] font-bold text-slate-500">{selected.triageAnswers?.length || 0} recorded</span></div>{selected.triageAnswers?.length ? <div className="mt-3 space-y-2">{selected.triageAnswers.map(answer => <div key={answer.questionId} className="flex items-start justify-between gap-3 border-t border-slate-100 pt-2 text-xs"><span className="text-slate-600">{label(answer.questionId)}</span><span className={`font-extrabold ${['YES', 'TRUE'].includes(answer.answer.toUpperCase()) ? 'text-rose-700' : 'text-slate-800'}`}>{label(answer.answer)}</span></div>)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">No structured answers were supplied. Review the complaint directly with the caller; absence of answers does not mean low risk.</p>}<p className="mt-3 text-[10px] leading-4 text-slate-400">Suggested urgency: {label(selected.triageSuggestedUrgency)} · Reviewed urgency: {label(selected.triageUrgency)}</p></div>
 

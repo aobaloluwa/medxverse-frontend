@@ -2,10 +2,11 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Activity, AlertTriangle, Ambulance, ArrowRight, CheckCircle2, Clock3,
   Crosshair, HeartPulse, MapPin, PhoneCall, ShieldCheck, Siren, XCircle,
-  Loader2, RefreshCw, Building2
+  Loader2, RefreshCw, Building2, WifiOff, Video, Phone
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import {
@@ -15,6 +16,8 @@ import {
   type IncidentStatus
 } from '@/services/medxrescue.service';
 import DynamicAerialMap from '@/components/medxrescue/DynamicAerialMap';
+import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
+import { offlineGpsTracker, type GpsBreadcrumb } from '@/lib/offline-gps-tracker';
 
 const steps: { status: IncidentStatus; label: string; detail: string }[] = [
   { status: 'REQUEST_RECEIVED', label: 'Request received', detail: 'Recorded in MedXVerse Nexus. Hospital dispatch team notified.' },
@@ -29,6 +32,7 @@ const steps: { status: IncidentStatus; label: string; detail: string }[] = [
 ];
 
 export default function PatientEmergencyPage() {
+  const router = useRouter();
   const { account } = useAuthStore();
   const [callerName, setCallerName] = useState('');
   const [callerPhone, setCallerPhone] = useState('');
@@ -48,6 +52,7 @@ export default function PatientEmergencyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [isOnline, setIsOnline] = useState(true);
 
   // Active tracking state
   const [activeRef, setActiveRef] = useState<string | null>(null);
@@ -64,6 +69,40 @@ export default function PatientEmergencyPage() {
       if (account.name) setCallerName(account.name);
     }
   }, [account]);
+
+  // Network Status & Offline GPS Queue Auto-Sync
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      if (activeRef && activeToken) {
+        void offlineGpsTracker.syncQueue(async (breadcrumbs) => {
+          const last = breadcrumbs[breadcrumbs.length - 1];
+          if (last) {
+            await medxRescueService.updateGuestLocation(activeRef, activeToken, {
+              latitude: last.latitude,
+              longitude: last.longitude,
+              accuracyMeters: last.accuracyMeters,
+            });
+          }
+        });
+      }
+    };
+
+    const handleOffline = () => setIsOnline(false);
+
+    if (typeof window !== 'undefined') {
+      setIsOnline(navigator.onLine);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      }
+    };
+  }, [activeRef, activeToken]);
 
   // Load existing active tracking session from sessionStorage if present
   useEffect(() => {
@@ -118,7 +157,7 @@ export default function PatientEmergencyPage() {
     }
   }, [activeRef, activeToken, refreshStatus]);
 
-  // Auto GPS Location detector (Triggers automatically on page load)
+  // Auto GPS Location detector (Works online & offline with local breadcrumb recording)
   const locate = useCallback(() => {
     setError('');
     if (!navigator.geolocation) {
@@ -129,10 +168,20 @@ export default function PatientEmergencyPage() {
     setLocationState('loading');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLatitude(String(pos.coords.latitude));
-        setLongitude(String(pos.coords.longitude));
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLatitude(String(lat));
+        setLongitude(String(lng));
         setAccuracy(pos.coords.accuracy);
         setLocationState('success');
+
+        // Record breadcrumb locally (for offline queue)
+        offlineGpsTracker.recordBreadcrumb({
+          latitude: lat,
+          longitude: lng,
+          accuracyMeters: pos.coords.accuracy,
+          timestamp: new Date().toISOString(),
+        });
       },
       () => {
         setLocationState('error');
@@ -146,6 +195,17 @@ export default function PatientEmergencyPage() {
   useEffect(() => {
     locate();
   }, [locate]);
+
+  // Launch Live WebRTC Emergency 911 Call to Hospital Dispatch
+  const triggerEmergency911Call = () => {
+    const callSessionId = activeRef ? `emergency-911-${activeRef}` : `emergency-911-${Date.now()}`;
+    openTelemedicineCall(
+      callSessionId,
+      '/portal/emergency',
+      `Emergency 911 Call (${callerName || 'Patient SOS'})`,
+      (url) => router.push(url)
+    );
+  };
 
   // Submit Emergency SOS
   const submitEmergency = async (e: FormEvent<HTMLFormElement>) => {
@@ -284,6 +344,19 @@ export default function PatientEmergencyPage() {
 
   return (
     <div className="space-y-6">
+      {/* Offline Status Banner */}
+      {!isOnline && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 text-xs font-extrabold flex items-center gap-3">
+          <WifiOff size={18} className="text-amber-700 shrink-0" />
+          <div>
+            <p className="font-black text-amber-950">Offline Mode Active</p>
+            <p className="font-normal text-amber-800">
+              GPS tracking coordinates are being recorded locally on your device. They will automatically sync to hospital dispatch when your connection is restored.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -294,11 +367,20 @@ export default function PatientEmergencyPage() {
             Order Emergency Assistance
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Request an emergency ambulance. Hospital dispatchers across MedXVerse Nexus will receive your request and dispatch a verified ambulance to your location.
+            Request an emergency ambulance. Hospital dispatchers across MedXVerse Nexus will receive your request and dispatch a verified ambulance to your location in Ogbomoso.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Emergency 911 Video/Voice Direct Call Button */}
+          <button
+            type="button"
+            onClick={triggerEmergency911Call}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-black text-white hover:bg-[#166657] shadow-md transition"
+          >
+            <Video size={16} /> Call Hospital Emergency (911)
+          </button>
+
           <a
             href="tel:112"
             className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black text-white hover:bg-rose-700 shadow-md transition"
@@ -322,8 +404,8 @@ export default function PatientEmergencyPage() {
                   <HeartPulse size={18} />
                 </span>
                 <div>
-                  <h2 className="text-sm font-extrabold text-slate-900">Live Satellite Emergency Radar</h2>
-                  <p className="text-[11px] text-slate-500">Hospital dispatch bases, emergency pins &amp; live ambulance tracking</p>
+                  <h2 className="text-sm font-extrabold text-slate-900">Live Satellite Emergency Radar (Ogbomoso)</h2>
+                  <p className="text-[11px] text-slate-500">LAUTECH LTH, BUTH, General Hospital &amp; live ambulance tracking</p>
                 </div>
               </div>
 
@@ -461,11 +543,11 @@ export default function PatientEmergencyPage() {
           <form onSubmit={submitEmergency} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
             <div className="border-b border-slate-100 pb-4">
               <span className="text-xs font-black uppercase tracking-widest text-rose-600">
-                Patient Emergency SOS Request
+                Patient Emergency SOS Request (Ogbomoso Base)
               </span>
               <h2 className="text-xl font-bold text-slate-900 mt-1">Request Ambulance Help</h2>
               <p className="text-xs text-slate-500 mt-1">
-                Fill in your details below. Hospitals on duty will receive your request immediately.
+                Fill in your details below. Hospitals on duty in Ogbomoso will receive your request immediately.
               </p>
             </div>
 
