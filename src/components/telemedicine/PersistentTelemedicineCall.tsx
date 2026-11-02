@@ -203,8 +203,10 @@ export default function PersistentTelemedicineCall() {
 
   const displayName = useMemo(() => {
     if (account?.name) return account.name;
-    return account?.userType === 'PATIENT' ? 'Patient' : 'MedXVerse staff member';
-  }, [account?.name, account?.userType]);
+    if (account?.userType === 'PATIENT') return 'Emergency Patient';
+    if (account?.userType === 'STAFF') return 'Hospital Dispatcher';
+    return isEmergencyCall ? 'Hospital Emergency Dispatcher' : 'MedXVerse Member';
+  }, [account?.name, account?.userType, isEmergencyCall]);
 
   useEffect(() => {
     if (!activeCall) return;
