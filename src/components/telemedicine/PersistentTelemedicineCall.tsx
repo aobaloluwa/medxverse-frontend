@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowUpRight, PhoneCall, Video, X } from 'lucide-react';
+import { ArrowUpRight, PhoneCall, Video, X, Siren } from 'lucide-react';
 import JitsiMeetingEmbed from '@/components/telemedicine/JitsiMeetingEmbed';
 import {
   ACTIVE_CALL_CHANGED_EVENT,
@@ -124,6 +124,27 @@ export default function PersistentTelemedicineCall() {
       setError('');
       return;
     }
+
+    // Bypass scheduled appointment lookup for emergency 911 / emergency voice calls
+    if (activeCall.sessionId.startsWith('emergency-')) {
+      const cleanId = activeCall.sessionId.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      setSession({
+        _id: activeCall.sessionId,
+        hospitalId: 'emergency-hospital',
+        patientId: 'emergency-patient',
+        doctorId: 'emergency-dispatch',
+        consultationType: 'VOICE',
+        status: 'IN_PROGRESS',
+        scheduledStartTime: new Date().toISOString(),
+        meetingRoomId: `medxverse-${cleanId}`,
+        meetingUrl: `https://meet.jit.si/medxverse-${cleanId}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any);
+      setError('');
+      return;
+    }
+
     setSession(null);
     setError('');
     void telemedicineService.getSessions().then((result) => {
@@ -165,13 +186,20 @@ export default function PersistentTelemedicineCall() {
     };
   }, [activeCall?.sessionId]);
 
+  const isEmergencyCall = Boolean(activeCall?.sessionId?.startsWith('emergency-'));
+
+  // Dedicated Clear Call Handler: Returns user to Emergency SOS or HMS Dispatch Console on hang up!
   const clearCall = useCallback(() => {
     try { window.localStorage.removeItem(ACTIVE_TELEMEDICINE_CALL_KEY); } catch { /* Ignore storage errors. */ }
+    const fallbackHref = isEmergencyCall
+      ? (account?.userType === 'PATIENT' ? '/portal/emergency' : '/hms/medxrescue')
+      : (account?.userType === 'PATIENT' ? '/portal/telemedicine' : '/staff/messages/consultations');
+
+    const targetHref = activeCall?.href || fallbackHref;
     setActiveCall(null);
     setSession(null);
-    const isPatient = account?.userType === 'PATIENT';
-    router.push(isPatient ? '/portal/telemedicine' : '/staff/messages/consultations');
-  }, [account?.userType, router]);
+    router.push(targetHref);
+  }, [account?.userType, activeCall?.href, isEmergencyCall, router]);
 
   const displayName = useMemo(() => {
     if (account?.name) return account.name;
@@ -181,20 +209,21 @@ export default function PersistentTelemedicineCall() {
   useEffect(() => {
     if (!activeCall) return;
     const onHangUp = () => window.dispatchEvent(new Event(HANG_UP_ACTIVE_CALL_EVENT));
-    // The visible mini-call's hang-up action triggers the same in-call hang-up
-    // control as the full interface, rather than merely hiding the call.
     window.addEventListener('medxverse:request-hangup', onHangUp);
     return () => window.removeEventListener('medxverse:request-hangup', onHangUp);
   }, [activeCall]);
 
   if (!activeCall) return null;
 
-  const returnToCall = () => router.push(activeCall.href);
+  const returnToCall = () => router.push(activeCall.href || (isEmergencyCall ? (account?.userType === 'PATIENT' ? '/portal/emergency' : '/hms/medxrescue') : (account?.userType === 'PATIENT' ? '/portal/telemedicine' : '/staff/messages/consultations')));
   const hangUp = () => window.dispatchEvent(new Event('medxverse:request-hangup'));
   const isPatient = account?.userType === 'PATIENT';
-  const isEmergencyCall = Boolean(activeCall?.sessionId?.startsWith('emergency-'));
   const isVoiceOnly = Boolean(isEmergencyCall || (session && session.consultationType === 'VOICE') || (activeCall?.title && /voice/i.test(activeCall.title)));
   const callAvailable = isEmergencyCall || Boolean(session && session.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status) && (session.status === 'IN_PROGRESS' || new Date(session.scheduledStartTime).getTime() <= Date.now()));
+
+  const minimizeTargetHref = isEmergencyCall
+    ? (isPatient ? '/portal/emergency' : '/hms/medxrescue')
+    : (isPatient ? '/portal/telemedicine' : '/staff/messages/consultations');
 
   return (
     <div className={isCallRoute ? 'fixed inset-0 z-[200] overflow-y-auto bg-white/10 p-3 backdrop-blur-sm sm:p-6' : 'pointer-events-none fixed inset-0 z-[200]'}>
@@ -207,20 +236,77 @@ export default function PersistentTelemedicineCall() {
         className={isCallRoute ? 'pointer-events-auto mx-auto w-full max-w-6xl pt-2' : 'pointer-events-auto fixed overflow-hidden rounded-2xl border border-[#b9ded3]/70 bg-white/45 shadow-2xl backdrop-blur-md'}
       >
         {isCallRoute ? (
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-[#cde7e1] bg-white/80 px-4 py-3 text-[#174f45] shadow-sm backdrop-blur-xl">
-            <div className="min-w-0"><p className="text-sm font-bold">MedXVerse active call</p><p className="mt-0.5 truncate text-xs text-slate-600">Navigate to any portal page; your call stays connected.</p></div>
-            <button type="button" onClick={() => router.push(isPatient ? '/portal/telemedicine' : '/staff/messages/consultations')} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-[#b9ded3] px-3 py-2 text-xs font-semibold text-[#1b7b68] hover:bg-[#eaf6f2]"><ArrowUpRight className="h-4 w-4" /> Minimize call</button>
+          <div className={`mb-3 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 shadow-sm backdrop-blur-xl ${
+            isEmergencyCall ? 'border-rose-300 bg-rose-50/90 text-rose-950' : 'border-[#cde7e1] bg-white/80 text-[#174f45]'
+          }`}>
+            <div className="min-w-0 font-sans">
+              <p className="text-sm font-black flex items-center gap-1.5">
+                {isEmergencyCall ? <Siren size={16} className="text-rose-600 animate-bounce" /> : null}
+                {isEmergencyCall ? 'MedXRescue Emergency SOS Call' : 'MedXVerse active call'}
+              </p>
+              <p className="mt-0.5 truncate text-xs font-medium text-slate-600">
+                {isEmergencyCall ? 'Direct hospital dispatch voice channel' : 'Navigate to any portal page; your call stays connected.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push(minimizeTargetHref)}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                isEmergencyCall ? 'border-rose-300 bg-rose-100 text-rose-800 hover:bg-rose-200' : 'border-[#b9ded3] text-[#1b7b68] hover:bg-[#eaf6f2]'
+              }`}
+            >
+              <ArrowUpRight className="h-4 w-4" /> Minimize call
+            </button>
           </div>
         ) : (
-          <div className="flex cursor-move touch-none items-center gap-3 bg-white/65 px-4 py-3.5 backdrop-blur-md" title="Drag to move this call panel">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1b7b68]">{isVoiceOnly ? <PhoneCall className="h-4 w-4 text-rose-600 animate-pulse" /> : <Video className="h-4 w-4" />}</span>
-            <button type="button" onClick={returnToCall} className="min-w-0 flex-1 text-left"><span className="block text-xs font-bold text-[#174f45]">{isEmergencyCall ? 'Emergency Voice Call' : session?.callAcceptedAt ? 'In call' : 'Calling…'}</span><span className="mt-0.5 block truncate text-[10px] text-slate-600">{activeCall.title} · Tap to return</span></button>
-            <button type="button" onClick={returnToCall} aria-label="Return to call interface" title="Return to call" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1b7b68] text-white hover:bg-[#176c5c]"><ArrowUpRight className="h-4 w-4" /></button>
-            <button type="button" onClick={hangUp} aria-label="Hang up active call" title="Hang up" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"><X className="h-4 w-4" /></button>
+          <div className={`flex cursor-move touch-none items-center gap-3 px-4 py-3.5 backdrop-blur-md ${
+            isEmergencyCall ? 'bg-rose-50/95 border-b border-rose-200' : 'bg-white/65'
+          }`} title="Drag to move this call panel">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+              isEmergencyCall ? 'bg-rose-600 text-white' : 'bg-white text-[#1b7b68]'
+            }`}>
+              {isEmergencyCall ? <Siren className="h-5 w-5 animate-pulse" /> : isVoiceOnly ? <PhoneCall className="h-4 w-4 text-rose-600 animate-pulse" /> : <Video className="h-4 w-4" />}
+            </span>
+            <button type="button" onClick={returnToCall} className="min-w-0 flex-1 text-left">
+              <span className="block text-xs font-black text-slate-900">
+                {isEmergencyCall ? '🚨 EMERGENCY SOS CALL' : session?.callAcceptedAt ? 'In call' : 'Calling…'}
+              </span>
+              <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-600">
+                {activeCall.title} · Tap to view
+              </span>
+            </button>
+            <button type="button" onClick={returnToCall} aria-label="Return to call interface" title="Return to call" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1b7b68] text-white hover:bg-[#176c5c]">
+              <ArrowUpRight className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={hangUp} aria-label="Hang up active call" title="Hang up" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50">
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
+
         <div className={isCallRoute ? 'w-full' : 'max-h-[370px] overflow-hidden'}>
-          {error && !isEmergencyCall ? <div role="alert" className="rounded-2xl bg-white p-6 text-sm text-rose-700">{error}</div> : callAvailable ? <JitsiMeetingEmbed key={activeCall.sessionId} sessionId={session?._id || activeCall.sessionId} displayName={displayName} voiceOnly={isVoiceOnly} compact={!isCallRoute} recordCallSummary={!isEmergencyCall} onJoined={() => { if (!isPatient && session && session.status === 'WAITING_ROOM') void telemedicineService.updateStatus(session._id, 'IN_PROGRESS').then(setSession).catch(() => undefined); }} onClose={clearCall} /> : <div className="rounded-2xl bg-white/90 p-6 text-sm text-slate-600 backdrop-blur-xl">{session ? 'This consultation is no longer available to join.' : 'Loading your secure consultation…'}</div>}
+          {error && !isEmergencyCall ? (
+            <div role="alert" className="rounded-2xl bg-white p-6 text-sm text-rose-700">{error}</div>
+          ) : callAvailable ? (
+            <JitsiMeetingEmbed
+              key={activeCall.sessionId}
+              sessionId={session?._id || activeCall.sessionId}
+              displayName={displayName}
+              voiceOnly={isVoiceOnly}
+              compact={!isCallRoute}
+              recordCallSummary={!isEmergencyCall}
+              onJoined={() => {
+                if (!isPatient && session && session.status === 'WAITING_ROOM') {
+                  void telemedicineService.updateStatus(session._id, 'IN_PROGRESS').then(setSession).catch(() => undefined);
+                }
+              }}
+              onClose={clearCall}
+            />
+          ) : (
+            <div className="rounded-2xl bg-white/90 p-6 text-sm text-slate-600 backdrop-blur-xl">
+              {session ? 'This consultation is no longer available to join.' : 'Loading your secure consultation…'}
+            </div>
+          )}
         </div>
       </div>
     </div>
