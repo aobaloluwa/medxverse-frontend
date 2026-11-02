@@ -192,7 +192,9 @@ export default function PersistentTelemedicineCall() {
   const returnToCall = () => router.push(activeCall.href);
   const hangUp = () => window.dispatchEvent(new Event('medxverse:request-hangup'));
   const isPatient = account?.userType === 'PATIENT';
-  const callAvailable = Boolean(session && session.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status) && (session.status === 'IN_PROGRESS' || new Date(session.scheduledStartTime).getTime() <= Date.now()));
+  const isEmergencyCall = Boolean(activeCall?.sessionId?.startsWith('emergency-'));
+  const isVoiceOnly = Boolean(isEmergencyCall || (session && session.consultationType === 'VOICE') || (activeCall?.title && /voice/i.test(activeCall.title)));
+  const callAvailable = isEmergencyCall || Boolean(session && session.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(session.status) && (session.status === 'IN_PROGRESS' || new Date(session.scheduledStartTime).getTime() <= Date.now()));
 
   return (
     <div className={isCallRoute ? 'fixed inset-0 z-[200] overflow-y-auto bg-white/10 p-3 backdrop-blur-sm sm:p-6' : 'pointer-events-none fixed inset-0 z-[200]'}>
@@ -211,14 +213,14 @@ export default function PersistentTelemedicineCall() {
           </div>
         ) : (
           <div className="flex cursor-move touch-none items-center gap-3 bg-white/65 px-4 py-3.5 backdrop-blur-md" title="Drag to move this call panel">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1b7b68]">{/voice/i.test(activeCall.title) ? <PhoneCall className="h-4 w-4" /> : <Video className="h-4 w-4" />}</span>
-            <button type="button" onClick={returnToCall} className="min-w-0 flex-1 text-left"><span className="block text-xs font-bold text-[#174f45]">{session?.callAcceptedAt ? 'In call' : 'Calling…'}</span><span className="mt-0.5 block truncate text-[10px] text-slate-600">{activeCall.title} · Tap to return</span></button>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1b7b68]">{isVoiceOnly ? <PhoneCall className="h-4 w-4 text-rose-600 animate-pulse" /> : <Video className="h-4 w-4" />}</span>
+            <button type="button" onClick={returnToCall} className="min-w-0 flex-1 text-left"><span className="block text-xs font-bold text-[#174f45]">{isEmergencyCall ? 'Emergency Voice Call' : session?.callAcceptedAt ? 'In call' : 'Calling…'}</span><span className="mt-0.5 block truncate text-[10px] text-slate-600">{activeCall.title} · Tap to return</span></button>
             <button type="button" onClick={returnToCall} aria-label="Return to call interface" title="Return to call" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1b7b68] text-white hover:bg-[#176c5c]"><ArrowUpRight className="h-4 w-4" /></button>
             <button type="button" onClick={hangUp} aria-label="Hang up active call" title="Hang up" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"><X className="h-4 w-4" /></button>
           </div>
         )}
         <div className={isCallRoute ? 'w-full' : 'max-h-[370px] overflow-hidden'}>
-          {error ? <div role="alert" className="rounded-2xl bg-white p-6 text-sm text-rose-700">{error}</div> : callAvailable && session ? <JitsiMeetingEmbed key={activeCall.sessionId} sessionId={session._id} displayName={displayName} voiceOnly={session.consultationType === 'VOICE'} compact={!isCallRoute} recordCallSummary={true} onJoined={() => { if (!isPatient && session.status === 'WAITING_ROOM') void telemedicineService.updateStatus(session._id, 'IN_PROGRESS').then(setSession).catch(() => undefined); }} onClose={clearCall} /> : <div className="rounded-2xl bg-white/90 p-6 text-sm text-slate-600 backdrop-blur-xl">{session ? 'This consultation is no longer available to join.' : 'Loading your secure consultation…'}</div>}
+          {error && !isEmergencyCall ? <div role="alert" className="rounded-2xl bg-white p-6 text-sm text-rose-700">{error}</div> : callAvailable ? <JitsiMeetingEmbed key={activeCall.sessionId} sessionId={session?._id || activeCall.sessionId} displayName={displayName} voiceOnly={isVoiceOnly} compact={!isCallRoute} recordCallSummary={!isEmergencyCall} onJoined={() => { if (!isPatient && session && session.status === 'WAITING_ROOM') void telemedicineService.updateStatus(session._id, 'IN_PROGRESS').then(setSession).catch(() => undefined); }} onClose={clearCall} /> : <div className="rounded-2xl bg-white/90 p-6 text-sm text-slate-600 backdrop-blur-xl">{session ? 'This consultation is no longer available to join.' : 'Loading your secure consultation…'}</div>}
         </div>
       </div>
     </div>

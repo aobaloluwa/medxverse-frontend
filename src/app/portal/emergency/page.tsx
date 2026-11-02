@@ -196,13 +196,13 @@ export default function PatientEmergencyPage() {
     locate();
   }, [locate]);
 
-  // Launch Live WebRTC Emergency 911 Call to Hospital Dispatch
-  const triggerEmergency911Call = () => {
-    const callSessionId = activeRef ? `emergency-911-${activeRef}` : `emergency-911-${Date.now()}`;
+  // Launch Emergency Voice Call to Hospital Dispatch via Telemedicine calling engine
+  const triggerEmergencyVoiceCall = () => {
+    const callSessionId = activeRef ? `emergency-voice-${activeRef}` : `emergency-voice-${Date.now()}`;
     openTelemedicineCall(
       callSessionId,
       '/portal/emergency',
-      `Emergency 911 Call (${callerName || 'Patient SOS'})`,
+      `Emergency Voice Call (${callerName || 'Patient SOS'})`,
       (url) => router.push(url)
     );
   };
@@ -372,13 +372,13 @@ export default function PatientEmergencyPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Emergency 911 Video/Voice Direct Call Button */}
+          {/* Emergency Voice Call Button (Using Telemedicine Calling Module) */}
           <button
             type="button"
-            onClick={triggerEmergency911Call}
+            onClick={triggerEmergencyVoiceCall}
             className="inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-black text-white hover:bg-[#166657] shadow-md transition"
           >
-            <Video size={16} /> Call Hospital Emergency (911)
+            <PhoneCall size={16} className="text-rose-300 animate-pulse" /> Emergency Voice Call to Hospital
           </button>
 
           <a
