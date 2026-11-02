@@ -262,13 +262,15 @@ export default function JitsiMeetingEmbed({
 
         if (cancelled) return;
 
-        if (!credentials?.jwt || !credentials.roomName) {
+        if (!credentials?.roomName) {
           throw new Error(
             'The video-call server returned incomplete meeting credentials.'
           );
         }
 
-        const domain = credentials.domain || '8x8.vc';
+        const domain = credentials.domain || 'meet.jit.si';
+        const isPublicJitsi = domain === 'meet.jit.si' || !credentials.jwt || !credentials.jwt.startsWith('eyJ');
+        const jwtToken = isPublicJitsi ? undefined : credentials.jwt;
 
         setRoomName(credentials.roomName);
 
@@ -286,7 +288,7 @@ export default function JitsiMeetingEmbed({
 
         const meeting = new JitsiAPI(domain, {
           roomName: credentials.roomName,
-          jwt: credentials.jwt,
+          jwt: jwtToken,
           parentNode: hostRef.current,
           width: '100%',
           height: '100%',

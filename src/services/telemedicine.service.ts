@@ -152,7 +152,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export interface JaaSMeetingToken {
-  domain: '8x8.vc';
+  domain: string;
   appId: string;
   roomName: string;
   jwt: string;
