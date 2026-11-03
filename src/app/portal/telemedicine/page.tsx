@@ -133,9 +133,8 @@ export default function TelemedicinePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const callTimeReady = (session: TelemedicineSession) => { const scheduled = new Date(session.scheduledStartTime).getTime(); return Number.isFinite(scheduled) && Date.now() >= scheduled; };
+  const callTimeReady = (_session: TelemedicineSession) => true;
   const openSessionCall = (session: TelemedicineSession) => {
-    if (!session.doctorAcceptedAt || !callTimeReady(session)) return;
     openTelemedicineCall(session._id, `${isPatientPortal ? '/portal' : '/staff'}/call/${encodeURIComponent(session._id)}`, `${session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`, router.push);
   };
 
@@ -1078,12 +1077,12 @@ export default function TelemedicinePage() {
                 )}
                 {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
                   isPatientPortal ? (
-                    <button type="button" disabled={!selectedSession.doctorAcceptedAt || !callTimeReady(selectedSession) || (isPatientPortal && selectedSession.paymentStatus === 'PENDING')} onClick={() => openSessionCall(selectedSession)} title={!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
-                      {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}
+                    <button type="button" disabled={isPatientPortal && selectedSession.paymentStatus === 'PENDING'} onClick={() => openSessionCall(selectedSession)} title="Join consultation" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
+                      {selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}
                     </button>
                   ) : (
-                    <button type="button" disabled={!selectedSession.doctorAcceptedAt || !callTimeReady(selectedSession)} onClick={() => openSessionCall(selectedSession)} title={!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
-                      <VideoIcon className="h-4 w-4" /> {!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'}
+                    <button type="button" onClick={() => openSessionCall(selectedSession)} title="Join consultation" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#176c5c] disabled:cursor-not-allowed disabled:bg-slate-300">
+                      <VideoIcon className="h-4 w-4" /> Join consultation
                     </button>
                   )
                 )}
@@ -1205,7 +1204,7 @@ export default function TelemedicinePage() {
             </div>
             <div className="mt-4 space-y-2">
               {selectedSession.consultationType !== 'CHAT' && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(selectedSession.status) && (
-                <button type="button" disabled={!selectedSession.doctorAcceptedAt || !callTimeReady(selectedSession) || (isPatientPortal && selectedSession.paymentStatus === 'PENDING')} onClick={() => { openSessionCall(selectedSession); setShowSessionDetails(false); }} title={!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available at ${formatDateTime(selectedSession.scheduledStartTime)}` : 'Join consultation'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} {!selectedSession.doctorAcceptedAt ? 'Waiting for doctor acceptance' : !callTimeReady(selectedSession) ? `Available ${formatDateTime(selectedSession.scheduledStartTime)}` : `Join ${selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}`}</button>
+                <button type="button" disabled={isPatientPortal && selectedSession.paymentStatus === 'PENDING'} onClick={() => { openSessionCall(selectedSession); setShowSessionDetails(false); }} title="Join consultation" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-3 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{selectedSession.consultationType === 'VOICE' ? <Phone className="h-4 w-4" /> : <VideoIcon className="h-4 w-4" />} Join {selectedSession.consultationType === 'VOICE' ? 'voice call' : 'video call'}</button>
               )}
               <button type="button" onClick={() => {
                 setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));

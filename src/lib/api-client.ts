@@ -22,21 +22,38 @@ const AUTH_ROUTES_THAT_MUST_NOT_REDIRECT = [
   '/auth/register',
   '/auth/staff/login',
   '/auth/staff/invitation',
+  '/portal/login',
+  '/portal/register',
+  '/portal/call',
+  '/staff/call',
+  '/portal/emergency',
+  '/portal/telemedicine',
+  '/medxrescue',
+  '/telemedicine',
 ];
 
-const isAuthRequest = (url?: string) => {
+const isExemptRequest = (url?: string) => {
+  if (typeof window !== 'undefined') {
+    const currentPath = window.location.pathname;
+    if (AUTH_ROUTES_THAT_MUST_NOT_REDIRECT.some((route) => currentPath.includes(route))) {
+      return true;
+    }
+  }
   if (!url) return false;
-
-  return AUTH_ROUTES_THAT_MUST_NOT_REDIRECT.some((route) =>
-    url.includes(route)
+  return (
+    AUTH_ROUTES_THAT_MUST_NOT_REDIRECT.some((route) => url.includes(route)) ||
+    url.includes('/medxrescue') ||
+    url.includes('/telemedicine') ||
+    url.includes('/incidents') ||
+    url.includes('/call')
   );
 };
 
-const handleExpiredSession = () => {
+const handleExpiredSession = (requestUrl?: string) => {
   if (typeof window === 'undefined') return;
 
-  // Never redirect an already-running login/register request.
-  if (window.location.pathname === '/auth/login') return;
+  // Never redirect call pages, emergency routes, or active call windows to login!
+  if (isExemptRequest(requestUrl)) return;
 
   useAuthStore.getState().logout();
 
@@ -73,9 +90,9 @@ apiClient.interceptors.response.use(
     if (
       status === 401 &&
       typeof window !== 'undefined' &&
-      !isAuthRequest(requestUrl)
+      !isExemptRequest(requestUrl)
     ) {
-      handleExpiredSession();
+      handleExpiredSession(requestUrl);
     }
 
     const message =
@@ -86,3 +103,4 @@ apiClient.interceptors.response.use(
     return Promise.reject(new Error(message));
   }
 );
+
