@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/useAuthStore';
+import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
 
 function TelemedicineRedirectContent() {
   const router = useRouter();
@@ -11,25 +12,29 @@ function TelemedicineRedirectContent() {
   const sessionId = searchParams.get('sessionId');
 
   useEffect(() => {
+    if (sessionId) {
+      const isStaff = account?.userType === 'STAFF';
+      const target = isStaff
+        ? `/staff/call/${encodeURIComponent(sessionId)}`
+        : `/portal/call/${encodeURIComponent(sessionId)}`;
+
+      openTelemedicineCall(sessionId, target, isStaff ? 'Staff Consultation Call' : 'Patient Virtual Care');
+      router.replace(target);
+      return;
+    }
+
     if (account?.userType === 'PATIENT') {
-      const destination = sessionId
-        ? `/portal/telemedicine?sessionId=${encodeURIComponent(sessionId)}`
-        : '/portal/telemedicine';
-
-      router.replace(destination);
+      router.replace('/portal/telemedicine');
       return;
     }
 
-    if (account?.userType === 'STAFF' && sessionId) {
-      router.replace(`/staff/call/${encodeURIComponent(sessionId)}`);
+    if (account?.userType === 'STAFF') {
+      router.replace('/staff/messages/consultations');
       return;
     }
 
-    router.replace(
-      account?.userType === 'STAFF'
-        ? '/staff/messages/consultations'
-        : '/portal/login'
-    );
+    // Default to portal telemedicine if no user session
+    router.replace('/portal/telemedicine');
   }, [account?.userType, router, sessionId]);
 
   return (
