@@ -209,5 +209,30 @@ export const medxRescueService = {
     apiClient.get<never, ApiEnvelope<LiveFleetData>>('/medxrescue/fleet/live'),
   seedDemoFleet: async () =>
     apiClient.post<never, ApiEnvelope<{ provider: unknown; vehicles: unknown[] }>>('/medxrescue/fleet/seed-demo'),
+
+  // --- SRS Extensions ---
+  recordClinicalObservation: async (incidentId: string, input: Record<string, unknown>) =>
+    apiClient.post<never, ApiEnvelope<Record<string, unknown>>>(`/medxrescue/incidents/${incidentId}/observations`, input),
+  getClinicalObservations: async (incidentId: string) =>
+    apiClient.get<never, ApiEnvelope<Record<string, unknown>[]>>(`/medxrescue/incidents/${incidentId}/observations`),
+  saveEPCR: async (incidentId: string, input: Record<string, unknown>) =>
+    apiClient.post<never, ApiEnvelope<Record<string, unknown>>>(`/medxrescue/incidents/${incidentId}/epcr`, input),
+  getEPCR: async (incidentId: string) =>
+    apiClient.get<never, ApiEnvelope<Record<string, unknown>>>(`/medxrescue/incidents/${incidentId}/epcr`),
+  submitPreShiftChecklist: async (vehicleId: string, input: Record<string, unknown>) =>
+    apiClient.post<never, ApiEnvelope<Record<string, unknown>>>(`/medxrescue/vehicles/${encodeURIComponent(vehicleId)}/pre-shift-checklist`, input),
+  getMatchingCandidates: async (incidentId: string) =>
+    apiClient.get<never, ApiEnvelope<{ incidentId: string; priority: string; candidates: Array<{ vehicle: RescueVehicle; matchScore: number; explainableReasons: string[]; recommended: boolean }> }>>(`/medxrescue/incidents/${incidentId}/matching-candidates`),
+  activateHospitalTeam: async (incidentId: string, facilityId: string, teamType: string, notes?: string) =>
+    apiClient.post<never, ApiEnvelope<Record<string, unknown>>>(`/medxrescue/incidents/${incidentId}/team-activations`, { facilityId, teamType, notes }),
+  getHospitalTeamActivations: async (incidentId: string) =>
+    apiClient.get<never, ApiEnvelope<Record<string, unknown>[]>>(`/medxrescue/incidents/${incidentId}/team-activations`),
+  getFHIRBundle: async (incidentId: string) =>
+    apiClient.get<never, ApiEnvelope<Record<string, unknown>>>(`/medxrescue/incidents/${incidentId}/fhir`),
+  createFamilyTrackingLink: async (reference: string, token: string) =>
+    apiClient.post<never, ApiEnvelope<{ reference: string; familyToken: string; expiresAt: string }>>(`/medxrescue/incidents/public/${encodeURIComponent(reference)}/family-link`, {}, {
+      headers: { 'X-Emergency-Access-Token': token },
+    }),
 };
+
 
