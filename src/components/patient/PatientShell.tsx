@@ -50,10 +50,19 @@ export default function PatientShell({ children }: PatientShellProps) {
 
   useEffect(() => {
     if (!hasHydrated) return;
+
+    const isPublicOrCall =
+      pathname === "/portal/login" ||
+      pathname === "/portal/register" ||
+      pathname === "/portal/emergency" ||
+      pathname.startsWith("/portal/call/");
+
+    if (isPublicOrCall) return;
+
     if (!isAuthenticated || account?.userType !== "PATIENT") {
       router.replace("/portal/login");
     }
-  }, [account?.userType, hasHydrated, isAuthenticated, router]);
+  }, [account?.userType, hasHydrated, isAuthenticated, pathname, router]);
 
   useEffect(() => {
     if (!token || account?.userType !== "PATIENT" || !account?.hospitalId) {
@@ -93,7 +102,13 @@ export default function PatientShell({ children }: PatientShellProps) {
     router.replace("/portal/login");
   };
 
-  if (!hasHydrated || !isAuthenticated || account?.userType !== "PATIENT") {
+  const isPublicOrCall =
+    pathname === "/portal/login" ||
+    pathname === "/portal/register" ||
+    pathname === "/portal/emergency" ||
+    pathname.startsWith("/portal/call/");
+
+  if (!isPublicOrCall && (!hasHydrated || !isAuthenticated || account?.userType !== "PATIENT")) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f4f7f6]">
         <Activity className="h-7 w-7 animate-pulse text-[#1b7b68]" />

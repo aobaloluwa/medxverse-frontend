@@ -66,9 +66,10 @@ export default function PatientEmergencyPage() {
   // Prefill logged in patient credentials
   useEffect(() => {
     if (account) {
-      if (account.name) setCallerName(account.name);
+      if (account.name && !callerName) setCallerName(account.name);
+      if ((account as any).phone && !callerPhone) setCallerPhone((account as any).phone);
     }
-  }, [account]);
+  }, [account, callerName, callerPhone]);
 
   // Network Status & Offline GPS Queue Auto-Sync
   useEffect(() => {

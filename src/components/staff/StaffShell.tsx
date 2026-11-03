@@ -73,6 +73,8 @@ export default function StaffShell({ children }: StaffShellProps) {
   useEffect(() => {
     if (!hasHydrated) return;
 
+    if (pathname.startsWith('/staff/call/')) return;
+
     if (!isAuthenticated) {
       router.replace('/auth/login?redirect=/staff');
       return;
@@ -81,7 +83,7 @@ export default function StaffShell({ children }: StaffShellProps) {
     if (account?.userType !== 'STAFF') {
       router.replace(account?.accountType === 'HMO' ? '/hmo' : '/hms');
     }
-  }, [account, hasHydrated, isAuthenticated, router]);
+  }, [account, hasHydrated, isAuthenticated, pathname, router]);
 
   useEffect(() => {
     if (!hasHydrated || account?.userType !== 'STAFF') return;
