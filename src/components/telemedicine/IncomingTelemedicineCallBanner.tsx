@@ -87,7 +87,7 @@ export default function IncomingTelemedicineCallBanner() {
   const userType = account?.userType;
 
   const checkForIncomingCall = useCallback(async () => {
-    if ((userType !== 'PATIENT' && userType !== 'STAFF') || pollingRef.current) return;
+    if (!account || pollingRef.current) return;
 
     pollingRef.current = true;
 
@@ -143,14 +143,20 @@ export default function IncomingTelemedicineCallBanner() {
 
         if (endedAt && startedAt && endedAt >= startedAt) continue;
 
-        const caller = userType === 'PATIENT'
-          ? getPersonName(session.doctorId)
-          : getPersonName(session.patientId);
-        const callerName = caller || (userType === 'PATIENT' ? 'Your doctor' : 'Your patient');
+        const isEmergency = session._id.startsWith('emergency-');
+        let callerName = '';
+        if (isEmergency) {
+          callerName = (session as any).callerName || (userType === 'PATIENT' ? 'Hospital Emergency Dispatch' : 'Emergency SOS Patient');
+        } else {
+          const caller = userType === 'PATIENT'
+            ? getPersonName(session.doctorId)
+            : getPersonName(session.patientId);
+          callerName = caller || (userType === 'PATIENT' ? 'Your doctor' : 'Your patient');
+        }
 
         found = {
           session,
-          title: session.consultationType === 'VOICE' ? 'Voice call' : 'Video call',
+          title: isEmergency ? 'Emergency Call' : (session.consultationType === 'VOICE' ? 'Voice call' : 'Video call'),
           callerName,
         };
         break;
@@ -291,11 +297,11 @@ export default function IncomingTelemedicineCallBanner() {
   }
 
   const isPatient = userType === 'PATIENT';
+  const isEmergency = incoming.session._id.startsWith('emergency-');
 
-  const href = `${
-    isPatient ? '/portal' : '/staff'
-  }/call/${encodeURIComponent(incoming.session._id)}`;
-
+  const href = isEmergency
+    ? (isPatient ? '/portal/emergency' : '/hms/medxrescue')
+    : `${isPatient ? '/portal' : '/staff'}/call/${encodeURIComponent(incoming.session._id)}`;
 
   const accept = async () => {
     setAnswerError('');
@@ -319,7 +325,7 @@ export default function IncomingTelemedicineCallBanner() {
     openTelemedicineCall(
       incoming.session._id,
       href,
-      `${incoming.session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`,
+      isEmergency ? `Emergency Call (${incoming.callerName})` : `${incoming.session.consultationType === 'VOICE' ? 'Voice' : 'Video'} consultation`,
       router.push,
     );
   };
