@@ -43,7 +43,11 @@ export default function PatientEmergencyPage() {
   const [additionalDetails, setAdditionalDetails] = useState('');
   const [locationDescription, setLocationDescription] = useState('');
   const [landmark, setLandmark] = useState('');
+  const [patientCount, setPatientCount] = useState<number | ''>(1);
+  const [language, setLanguage] = useState('English');
+  const [accessibilityNeeds, setAccessibilityNeeds] = useState('');
   const [latitude, setLatitude] = useState('');
+
   const [longitude, setLongitude] = useState('');
   const [accuracy, setAccuracy] = useState<number | undefined>();
   const [triageAnswers, setTriageAnswers] = useState<Record<string, string>>({});
@@ -58,6 +62,8 @@ export default function PatientEmergencyPage() {
   const [activeRef, setActiveRef] = useState<string | null>(null);
   const [activeToken, setActiveToken] = useState<string | null>(null);
   const [activeIncident, setActiveIncident] = useState<RescueIncident | null>(null);
+  const [familyLink, setFamilyLink] = useState('');
+  const [generatingFamilyLink, setGeneratingFamilyLink] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [liveFleet, setLiveFleet] = useState<LiveFleetData | null>(null);
 
@@ -240,6 +246,13 @@ export default function PatientEmergencyPage() {
       }
 
       const key = idempotencyKeyRef.current;
+      const combinedDetails = [
+        additionalDetails.trim(),
+        patientCount ? `Approx. Patients: ${patientCount}` : '',
+        language && language !== 'English' ? `Preferred Language: ${language}` : '',
+        accessibilityNeeds ? `Accessibility Needs: ${accessibilityNeeds}` : ''
+      ].filter(Boolean).join(' | ');
+
       const res = await medxRescueService.createGuestIncident({
         callerName: callerName.trim() || account?.name || undefined,
         callerPhone: callerPhone.trim(),
@@ -247,7 +260,7 @@ export default function PatientEmergencyPage() {
         patientName: callerIsPatient ? undefined : patientName.trim() || undefined,
         patientAge: patientAge ? Number(patientAge) : undefined,
         chiefComplaint: chiefComplaint.trim(),
-        additionalDetails: additionalDetails.trim() || undefined,
+        additionalDetails: combinedDetails || undefined,
         landmark: landmark.trim() || undefined,
         locationDescription: locationDescription.trim() || undefined,
         latitude: hasCoordinates ? lat : undefined,
@@ -312,6 +325,22 @@ export default function PatientEmergencyPage() {
       setNotice('Emergency request was cancelled.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not cancel request.');
+    }
+  };
+
+  const generateFamilyLink = async () => {
+    if (!activeRef || !activeToken) return;
+    setGeneratingFamilyLink(true);
+    setError('');
+    try {
+      const res = await medxRescueService.createFamilyTrackingLink(activeRef, activeToken);
+      const url = `${window.location.origin}/medxrescue/status?reference=${res.data.reference}&token=${res.data.familyToken}`;
+      setFamilyLink(url);
+      setNotice('Time-limited family tracking link generated.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate family tracking link.');
+    } finally {
+      setGeneratingFamilyLink(false);
     }
   };
 
@@ -517,22 +546,46 @@ export default function PatientEmergencyPage() {
 
               {/* Location Update & Cancel Controls */}
               {!isClosed && (
-                <div className="border-t border-slate-100 pt-4 flex flex-wrap gap-2 justify-between items-center">
-                  <button
-                    type="button"
-                    onClick={updatePatientLocation}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-xs font-bold text-[#1b7b68] hover:bg-teal-100"
-                  >
-                    <MapPin size={14} /> Send Updated Location
-                  </button>
+                <div className="border-t border-slate-100 pt-4 flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-2 justify-between items-center">
+                    <button
+                      type="button"
+                      onClick={updatePatientLocation}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-xs font-bold text-[#1b7b68] hover:bg-teal-100"
+                    >
+                      <MapPin size={14} /> Send Updated Location
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={cancelRequest}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50"
-                  >
-                    <XCircle size={14} /> Cancel SOS
-                  </button>
+                    <button
+                      type="button"
+                      onClick={generateFamilyLink}
+                      disabled={generatingFamilyLink}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    >
+                      <Crosshair size={14} /> {generatingFamilyLink ? 'Generating...' : 'Get Family Tracking Link'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={cancelRequest}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                    >
+                      <XCircle size={14} /> Cancel SOS
+                    </button>
+                  </div>
+
+                  {familyLink && (
+                    <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3 text-xs">
+                      <p className="font-bold text-slate-700">Share this secure link with family (expires when incident closes):</p>
+                      <input
+                        type="text"
+                        readOnly
+                        value={familyLink}
+                        className="mt-1 w-full rounded border border-slate-200 p-2 text-slate-600 outline-none"
+                        onClick={e => e.currentTarget.select()}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -677,6 +730,44 @@ export default function PatientEmergencyPage() {
                 </div>
               </div>
             )}
+
+            {/* Additional Context */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700">Patient Count</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={patientCount}
+                  onChange={e => setPatientCount(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700">Language</label>
+                <select
+                  value={language}
+                  onChange={e => setLanguage(e.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                >
+                  <option value="English">English</option>
+                  <option value="Yoruba">Yoruba</option>
+                  <option value="Hausa">Hausa</option>
+                  <option value="Igbo">Igbo</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700">Accessibility Needs</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Wheelchair, deaf"
+                  value={accessibilityNeeds}
+                  onChange={e => setAccessibilityNeeds(e.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                />
+              </div>
+            </div>
 
             {/* Emergency Description */}
             <div>
