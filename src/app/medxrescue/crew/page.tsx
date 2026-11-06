@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { medxRescueService, type DispatchOffer, type RescueIncident, type RescueVehicle } from '@/services/medxrescue.service';
+import AmbulanceShell from '@/components/medxrescue/AmbulanceShell';
 
 const idOf = (value: unknown) => typeof value === 'string' ? value : value && typeof value === 'object' && '_id' in value ? String((value as { _id: unknown })._id) : '';
 const incidentOf = (value: RescueIncident | string) => typeof value === 'string' ? null : value;
@@ -265,8 +266,8 @@ export default function MedxRescueCrewPage() {
   if (!hasHydrated || !isAuthenticated) return <div className="flex min-h-screen items-center justify-center bg-[#f5faf9]"><Loader2 className="animate-spin text-[#1b7b68]" /></div>;
 
   return (
-    <main className="min-h-screen bg-[#f5faf9] px-4 py-8 text-slate-800 sm:px-6">
-      <div className="mx-auto max-w-5xl">
+    <AmbulanceShell>
+      <div className="mx-auto max-w-5xl space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#1b7b68]">
@@ -631,6 +632,6 @@ export default function MedxRescueCrewPage() {
           </div>
         )}
       </div>
-    </main>
+    </AmbulanceShell>
   );
 }
