@@ -8,19 +8,12 @@ import {
   ACTIVE_CALL_CHANGED_EVENT,
   ACTIVE_TELEMEDICINE_CALL_KEY,
   HANG_UP_ACTIVE_CALL_EVENT,
+  readActiveCall,
+  clearActiveCall,
   type ActiveTelemedicineCall,
 } from '@/lib/telemedicine-call-window';
 import { telemedicineService, type TelemedicineSession } from '@/services/telemedicine.service';
 import { useAuthStore } from '@/store/useAuthStore';
-
-function readActiveCall(): ActiveTelemedicineCall | null {
-  try {
-    const raw = window.localStorage.getItem(ACTIVE_TELEMEDICINE_CALL_KEY);
-    return raw ? JSON.parse(raw) as ActiveTelemedicineCall : null;
-  } catch {
-    return null;
-  }
-}
 
 export default function PersistentTelemedicineCall() {
   const pathname = usePathname();
@@ -190,7 +183,7 @@ export default function PersistentTelemedicineCall() {
 
   // Dedicated Clear Call Handler: Returns user to Emergency SOS or HMS Dispatch Console on hang up!
   const clearCall = useCallback(() => {
-    try { window.localStorage.removeItem(ACTIVE_TELEMEDICINE_CALL_KEY); } catch { /* Ignore storage errors. */ }
+    clearActiveCall();
     const fallbackHref = isEmergencyCall
       ? (account?.userType === 'PATIENT' ? '/portal/emergency' : '/hms/medxrescue')
       : (account?.userType === 'PATIENT' ? '/portal/telemedicine' : '/staff/messages/consultations');

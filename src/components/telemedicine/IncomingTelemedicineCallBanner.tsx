@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { BellRing, Phone, PhoneCall, PhoneOff, Video, X } from 'lucide-react';
 import {
   openTelemedicineCall,
+  readActiveCall,
   ACTIVE_TELEMEDICINE_CALL_KEY,
   type ActiveTelemedicineCall,
 } from '@/lib/telemedicine-call-window';
@@ -53,14 +54,7 @@ function getPersonName(person: TelemedicineSession['patientId'] | TelemedicineSe
   return name;
 }
 
-function readActiveCall(): ActiveTelemedicineCall | null {
-  try {
-    const raw = window.localStorage.getItem(ACTIVE_TELEMEDICINE_CALL_KEY);
-    return raw ? (JSON.parse(raw) as ActiveTelemedicineCall) : null;
-  } catch {
-    return null;
-  }
-}
+
 
 function getTimestamp(value?: string | Date | null): number {
   if (!value) return 0;
