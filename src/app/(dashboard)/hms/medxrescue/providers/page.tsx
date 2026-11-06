@@ -131,7 +131,7 @@ export default function MedxRescueProviderAdminPage() {
 
   const addVehicle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const provider = providers.find(p => p._id === selectedProvider);
+    const provider = allProviders.find(p => p._id === selectedProvider);
     if (!provider) { setError('Select a verified provider first.'); return; }
     if (provider.verificationStatus !== 'VERIFIED') { setError('Vehicles can only be registered under a verified provider.'); return; }
     setBusy('vehicle'); setError(''); setNotice(''); setNewVehicle(null);
