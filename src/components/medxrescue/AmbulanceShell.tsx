@@ -174,9 +174,10 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
     );
   }
 
-  const isPending = vehicle && (vehicle.verificationStatus === "PENDING" || vehicle.verificationStatus === "UNDER_REVIEW");
-  const isRejected = vehicle && vehicle.verificationStatus === "REJECTED";
-  const isVerified = !vehicle || vehicle?.verificationStatus === "VERIFIED";
+  const vStatus = vehicle?.verificationStatus || (vehicle?.rejectionReason ? "REJECTED" : "VERIFIED");
+  const isRejected = Boolean(vehicle) && (vStatus === "REJECTED" || Boolean(vehicle?.rejectionReason));
+  const isPending = Boolean(vehicle) && !isRejected && (vStatus === "PENDING" || vStatus === "UNDER_REVIEW");
+  const isVerified = !vehicle || (!isRejected && !isPending);
 
   return (
     <div className="min-h-screen bg-[#f4f7f6] font-sans text-slate-800">
