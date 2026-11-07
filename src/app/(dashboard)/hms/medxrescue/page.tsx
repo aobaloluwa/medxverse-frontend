@@ -227,6 +227,22 @@ export default function MedxRescueDispatchPage() {
     finally { setBusy(false); }
   };
 
+  const directDispatchVehicle = async (vehicleId: string) => {
+    if (!selectedKey || !vehicleId) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const response = await medxRescueService.createDispatchOfferWave(selectedKey, [vehicleId], 300);
+      setNotice(response.message || 'Direct dispatch offer sent to ambulance! Crew notified.');
+      setCandidates([]);
+      setSelectedVehicles([]);
+      await load(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not dispatch ambulance directly.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const confirmAssignment = async (approve: boolean) => {
     if (!selectedKey) return;
     const explanation = reason.trim();
@@ -395,7 +411,7 @@ export default function MedxRescueDispatchPage() {
               const gpsTime = vehicle.locationUpdatedAt ? new Date(vehicle.locationUpdatedAt) : null;
               const gpsAge = gpsTime ? Math.max(0, Math.round((Date.now() - gpsTime.getTime()) / 1000)) : null;
               const checked = selectedVehicles.includes(vehicle._id);
-              return <div key={vehicle._id} className={`rounded-xl border p-3 transition ${checked ? 'border-[#1b7b68] bg-teal-50/70' : 'border-slate-200 hover:border-teal-200'}`}><div className="flex items-start gap-3"><input aria-label={`Select ${vehicle.registrationNumber} for dispatch offer wave`} type="checkbox" checked={checked} onChange={e => setSelectedVehicles(prev => e.target.checked ? [...prev, vehicle._id].slice(0, 20) : prev.filter(id => id !== vehicle._id))} className="mt-1 h-4 w-4 accent-[#1b7b68]" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm font-extrabold text-slate-900">{vehicle.registrationNumber} · {vehicle.makeModel}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">GPS fresh</span></div><p className="mt-1 text-xs text-slate-600">{vehicle.provider?.displayName || 'Verified provider'} · {label(vehicle.vehicleClass)}</p><p className="mt-1 text-[11px] text-slate-500">{typeof vehicle.distanceKm === 'number' ? `Approx. ${vehicle.distanceKm} km straight-line distance` : 'Distance unavailable'} · GPS updated {gpsAge === null ? 'time unavailable' : `${gpsAge}s ago`}{vehicle.locationAccuracyMeters ? ` · accuracy ±${Math.round(vehicle.locationAccuracyMeters)} m` : ''}</p>{vehicle.provider?.operatingAreas?.length ? <p className="mt-1 text-[11px] text-slate-500">Operating areas: {vehicle.provider.operatingAreas.join(', ')}</p> : null}<p className="mt-1 text-[10px] font-semibold text-amber-700">Confirm coverage, crew qualification and equipment before sending.</p><button type="button" onClick={e => { e.preventDefault(); setRouteVehicleId(vehicle._id); }} className="mt-2 text-xs font-bold text-[#1b7b68] hover:underline">Check road estimate</button></div></div></div>;
+              return <div key={vehicle._id} className={`rounded-xl border p-3 transition ${checked ? 'border-[#1b7b68] bg-teal-50/70' : 'border-slate-200 hover:border-teal-200'}`}><div className="flex items-start gap-3"><input aria-label={`Select ${vehicle.registrationNumber} for dispatch offer wave`} type="checkbox" checked={checked} onChange={e => setSelectedVehicles(prev => e.target.checked ? [...prev, vehicle._id].slice(0, 20) : prev.filter(id => id !== vehicle._id))} className="mt-1 h-4 w-4 accent-[#1b7b68]" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm font-extrabold text-slate-900">{vehicle.registrationNumber} · {vehicle.makeModel}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">GPS fresh</span></div><p className="mt-1 text-xs text-slate-600">{vehicle.provider?.displayName || 'Verified provider'} · {label(vehicle.vehicleClass)}</p><p className="mt-1 text-[11px] text-slate-500">{typeof vehicle.distanceKm === 'number' ? `Approx. ${vehicle.distanceKm} km straight-line distance` : 'Distance unavailable'} · GPS updated {gpsAge === null ? 'time unavailable' : `${gpsAge}s ago`}{vehicle.locationAccuracyMeters ? ` · accuracy ±${Math.round(vehicle.locationAccuracyMeters)} m` : ''}</p>{vehicle.provider?.operatingAreas?.length ? <p className="mt-1 text-[11px] text-slate-500">Operating areas: {vehicle.provider.operatingAreas.join(', ')}</p> : null}<p className="mt-1 text-[10px] font-semibold text-amber-700">Confirm coverage, crew qualification and equipment before sending.</p><div className="mt-2.5 flex flex-wrap items-center gap-2"><button type="button" onClick={e => { e.preventDefault(); setRouteVehicleId(vehicle._id); }} className="text-xs font-bold text-[#1b7b68] hover:underline">Check road estimate</button><button type="button" onClick={() => void directDispatchVehicle(vehicle._id)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1b7b68] px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-[#156354] disabled:opacity-50"><Send size={12} /> Direct Dispatch</button></div></div></div></div>;
             })}</div>
             {routeEstimate && <div className="mt-3 rounded-xl border border-teal-100 bg-teal-50/70 p-3"><p className="text-xs font-extrabold text-[#1b7b68]">Road route estimate · {routeEstimate.provider.toUpperCase()}</p><p className="mt-1 text-sm font-bold text-slate-900">{(routeEstimate.distanceMeters / 1000).toFixed(1)} km · {Math.max(1, Math.round(routeEstimate.durationSeconds / 60))} min estimated</p><p className="mt-1 text-[10px] leading-4 text-slate-500">Planning estimate only, not a guaranteed arrival time.</p></div>}
             {routeError && routeVehicleId && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-[11px] leading-5 text-amber-800">Road estimate unavailable: {routeError}. Do not guess an ETA.</p>}
