@@ -119,6 +119,55 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
     }
   }, [hasHydrated, isAuthenticated, pathname, router, token]);
 
+  // Automatic background device GPS telemetry heartbeat loop when crew is logged in
+  useEffect(() => {
+    if (!isAuthenticated || !token || !vehicle?._id) return;
+
+    let watchId: number | null = null;
+
+    const sendGpsFix = async (lat: number, lng: number, accuracy?: number) => {
+      try {
+        await fetch(`${API_BASE_URL}/medxrescue/vehicles/${vehicle._id}/location`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            latitude: lat,
+            longitude: lng,
+            accuracyMeters: accuracy,
+            ...(vehicle.providerId ? { providerId: typeof vehicle.providerId === "object" ? vehicle.providerId._id : vehicle.providerId } : {}),
+          }),
+        });
+      } catch {
+        // silent telemetry heartbeat
+      }
+    };
+
+    if (typeof window !== "undefined" && navigator.geolocation) {
+      // First immediate fix
+      navigator.geolocation.getCurrentPosition(
+        (pos) => void sendGpsFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+        () => null,
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      );
+
+      // Continuous watchPosition for live road movement
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => void sendGpsFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+        () => null,
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    }
+
+    return () => {
+      if (watchId !== null && typeof window !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [isAuthenticated, token, vehicle?._id, vehicle?.providerId]);
+
   const handleLogout = () => {
     logout();
     router.replace("/medxrescue/login");
