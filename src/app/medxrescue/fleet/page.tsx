@@ -50,48 +50,53 @@ export default function MedxRescueFleetRadarPage() {
 
   return (
     <AmbulanceShell>
-      <div className="space-y-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-teal-100 bg-white p-4 shadow-sm">
+      <div className="space-y-6 md:space-y-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-100 bg-white p-5 shadow-sm md:p-6">
           <div>
-            <h1 className="text-xl font-black text-slate-900 flex items-center gap-2">
-              <HeartPulse size={20} className="text-[#1b7b68]" /> Fleet Radar &amp; Smart Car HUD
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200/60 bg-teal-50 px-3 py-1 text-xs font-semibold text-[#1b7b68]">
+              <HeartPulse size={14} /> Fleet Radar &amp; Smart Cockpit HUD
+            </span>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
+              Live Fleet Telemetry &amp; GIS Map
             </h1>
-            <p className="text-xs text-slate-500 mt-1">Live telemetry map displaying moving ambulances, emergency incidents, and hospital ED bases.</p>
+            <p className="mt-1 text-xs text-slate-500 md:text-sm">
+              Real-time smart car cockpit HUD and aerial GIS map tracking moving ambulances, active incidents, and hospital emergency bases.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-xl bg-slate-100 p-1 font-bold text-xs border border-slate-200">
+            <div className="flex rounded-2xl bg-slate-100 p-1 text-xs font-semibold border border-slate-200">
               <button
                 type="button"
                 onClick={() => setDisplayMode('SMART_CAR_HUD')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${displayMode === 'SMART_CAR_HUD' ? 'bg-[#1b7b68] text-white font-black shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 transition-all ${displayMode === 'SMART_CAR_HUD' ? 'bg-[#1b7b68] text-white font-bold shadow-md shadow-[#1b7b68]/20' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                <Gauge size={14} /> Smart Cockpit HUD
+                <Gauge size={14} /> Cockpit HUD
               </button>
               <button
                 type="button"
                 onClick={() => setDisplayMode('AERIAL_MAP')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${displayMode === 'AERIAL_MAP' ? 'bg-[#1b7b68] text-white font-black shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 transition-all ${displayMode === 'AERIAL_MAP' ? 'bg-[#1b7b68] text-white font-bold shadow-md shadow-[#1b7b68]/20' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                <Layers size={14} /> Aerial GIS Map
+                <Layers size={14} /> GIS Map
               </button>
             </div>
 
             <button
               onClick={seedFleet}
               disabled={seeding}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-bold text-[#1b7b68] hover:bg-teal-100 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-2xl border border-teal-200 bg-teal-50/80 px-4 py-2.5 text-xs font-semibold text-[#1b7b68] hover:bg-teal-100/70 disabled:opacity-50"
             >
-              <RefreshCw size={13} className={seeding ? 'animate-spin' : ''} />
-              Seed Demo Fleet
+              <RefreshCw size={14} className={seeding ? 'animate-spin' : ''} />
+              Seed Fleet
             </button>
           </div>
         </div>
 
-        {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">{error}</div>}
-        {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">{notice}</div>}
+        {error && <div className="rounded-2xl border border-rose-200/60 bg-rose-50 p-4 text-xs font-semibold text-rose-700">{error}</div>}
+        {notice && <div className="rounded-2xl border border-emerald-200/60 bg-emerald-50 p-4 text-xs font-semibold text-emerald-800">{notice}</div>}
 
-        <div className="rounded-2xl border border-teal-100 bg-white shadow-sm overflow-hidden p-2">
+        <div className="rounded-3xl border border-slate-100 bg-white shadow-sm overflow-hidden p-2">
           {displayMode === 'SMART_CAR_HUD' ? (
             <DynamicSmartCarHud
               vehicles={fleet?.vehicles || []}

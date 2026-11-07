@@ -267,47 +267,65 @@ export default function MedxRescueCrewPage() {
 
   return (
     <AmbulanceShell>
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="space-y-6 md:space-y-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-100 bg-white p-5 shadow-sm md:p-6">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#1b7b68]">
-              <Ambulance size={16} /> MedXRescue Nexus · Crew Workstation
-            </div>
-            <h1 className="mt-2 text-3xl font-extrabold text-slate-950">Ambulance Crew OS</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Manage dispatch offers, share live telemetry GPS, run pre-shift equipment inspections, and record ePCR patient care on-scene.
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200/60 bg-teal-50 px-3 py-1 text-xs font-semibold text-[#1b7b68]">
+              <Ambulance size={14} /> Crew Workstation &amp; OS
+            </span>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
+              Ambulance Crew Workstation
+            </h1>
+            <p className="mt-1 text-xs text-slate-500 md:text-sm">
+              Manage live dispatch offers, share vehicle GPS telemetry, run pre-shift equipment inspections, and record ePCR patient care records.
             </p>
-            <p className="mt-2 text-xs text-slate-500">Signed in as {account?.name || 'Rescue team member'}</p>
           </div>
-          <button onClick={() => void load()} disabled={loading} className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh offers
+
+          <button
+            onClick={() => void load()}
+            disabled={loading}
+            className="inline-flex items-center gap-2 self-start rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-[#1b7b68]/30 hover:bg-slate-50 disabled:opacity-50 sm:self-center"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh Offers
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="mt-6 flex border-b border-slate-200 gap-6">
+        <div className="flex border-b border-slate-200/80 gap-6">
           <button
             onClick={() => setActiveTab('OFFERS')}
-            className={`pb-3 text-sm font-bold transition-colors flex items-center gap-2 ${activeTab === 'OFFERS' ? 'border-b-2 border-[#1b7b68] text-[#1b7b68]' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`pb-3 text-xs md:text-sm font-semibold transition-all flex items-center gap-2 ${
+              activeTab === 'OFFERS'
+                ? 'border-b-2 border-[#1b7b68] text-[#1b7b68] font-bold'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
           >
-            <Radio size={16} /> Dispatch Offers & Telemetry
+            <Radio size={16} /> Dispatch Offers &amp; Telemetry
           </button>
           <button
             onClick={() => setActiveTab('PRESHIFT')}
-            className={`pb-3 text-sm font-bold transition-colors flex items-center gap-2 ${activeTab === 'PRESHIFT' ? 'border-b-2 border-[#1b7b68] text-[#1b7b68]' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`pb-3 text-xs md:text-sm font-semibold transition-all flex items-center gap-2 ${
+              activeTab === 'PRESHIFT'
+                ? 'border-b-2 border-[#1b7b68] text-[#1b7b68] font-bold'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
           >
             <ClipboardList size={16} /> Pre-Shift Inspection
           </button>
           <button
             onClick={() => setActiveTab('EPCR')}
-            className={`pb-3 text-sm font-bold transition-colors flex items-center gap-2 ${activeTab === 'EPCR' ? 'border-b-2 border-[#1b7b68] text-[#1b7b68]' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`pb-3 text-xs md:text-sm font-semibold transition-all flex items-center gap-2 ${
+              activeTab === 'EPCR'
+                ? 'border-b-2 border-[#1b7b68] text-[#1b7b68] font-bold'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
           >
-            <Stethoscope size={16} /> ePCR & Live Vitals
+            <Stethoscope size={16} /> ePCR &amp; Live Vitals
           </button>
         </div>
 
-        {error && <div role="alert" className="mt-5 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"><AlertCircle size={18} className="shrink-0" />{error}</div>}
-        {notice && <div role="status" className="mt-5 flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 size={18} className="shrink-0" />{notice}</div>}
+        {error && <div role="alert" className="flex gap-2.5 rounded-2xl border border-rose-200/60 bg-rose-50 p-4 text-xs font-semibold text-rose-700"><AlertCircle size={18} className="shrink-0 text-rose-600" /><span>{error}</span></div>}
+        {notice && <div role="status" className="flex gap-2.5 rounded-2xl border border-emerald-200/60 bg-emerald-50 p-4 text-xs font-semibold text-emerald-800"><CheckCircle2 size={18} className="shrink-0 text-emerald-600" /><span>{notice}</span></div>}
 
         {/* TAB 1: DISPATCH OFFERS & TELEMETRY */}
         {activeTab === 'OFFERS' && (
