@@ -183,6 +183,8 @@ export const medxRescueService = {
     apiClient.post<never, ApiEnvelope<RescueVehicle>>(`/medxrescue/providers/${encodeURIComponent(providerId)}/vehicles`, input),
   setVehicleOperationalStatus: async (vehicleId: string, status: 'AVAILABLE' | 'OFFLINE' | 'BUSY' | 'MAINTENANCE', providerId?: string) =>
     apiClient.patch<never, ApiEnvelope<RescueVehicle>>(`/medxrescue/vehicles/${encodeURIComponent(vehicleId)}/operational-status`, { status, ...(providerId ? { providerId } : {}) }),
+  reviewVehicle: async (vehicleId: string, status: 'VERIFIED' | 'REJECTED' | 'UNDER_REVIEW', reason?: string) =>
+    apiClient.patch<never, ApiEnvelope<RescueVehicle>>(`/medxrescue/vehicles/${encodeURIComponent(vehicleId)}/review`, { status, reason }),
   getEligibleVehicles: async (incidentId: string) =>
     apiClient.get<never, ApiEnvelope<RescueVehicle[]>>('/medxrescue/dispatch/eligible-vehicles', { params: { incidentId } }),
   createDispatchOfferWave: async (incidentId: string, vehicleIds: string[], expiresInSeconds = 90) =>
