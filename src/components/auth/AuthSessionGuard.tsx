@@ -39,9 +39,14 @@ function getTokenExpiration(token: string): number | null {
 function redirectToLogin() {
   if (typeof window === 'undefined') return;
 
+  const pathname = window.location.pathname;
   if (
-    window.location.pathname === LOGIN_PATH ||
-    window.location.pathname === REGISTER_PATH
+    pathname === LOGIN_PATH ||
+    pathname === REGISTER_PATH ||
+    pathname.startsWith('/portal/login') ||
+    pathname.startsWith('/portal/register') ||
+    pathname.startsWith('/medxrescue/login') ||
+    pathname.startsWith('/medxrescue/register')
   ) {
     return;
   }
@@ -50,9 +55,13 @@ function redirectToLogin() {
 
   const currentPath = `${window.location.pathname}${window.location.search}`;
 
-  window.location.replace(
-    `${LOGIN_PATH}?redirect=${encodeURIComponent(currentPath)}`
-  );
+  if (pathname.startsWith('/medxrescue')) {
+    window.location.replace(`/medxrescue/login?redirect=${encodeURIComponent(currentPath)}`);
+  } else if (pathname.startsWith('/portal')) {
+    window.location.replace(`/portal/login?redirect=${encodeURIComponent(currentPath)}`);
+  } else {
+    window.location.replace(`${LOGIN_PATH}?redirect=${encodeURIComponent(currentPath)}`);
+  }
 }
 
 function isAuthenticationEndpoint(input: RequestInfo | URL): boolean {
@@ -67,7 +76,10 @@ function isAuthenticationEndpoint(input: RequestInfo | URL): boolean {
     url.includes('/auth/login') ||
     url.includes('/auth/register') ||
     url.includes('/auth/staff/login') ||
-    url.includes('/auth/staff/invitation')
+    url.includes('/auth/staff/invitation') ||
+    url.includes('/medxrescue/auth/login') ||
+    url.includes('/medxrescue/auth/register') ||
+    url.includes('/patient-portal/auth/login')
   );
 }
 

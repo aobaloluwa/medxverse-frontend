@@ -94,7 +94,7 @@ export default function MedxRescueCrewPage() {
   }, []);
 
   useEffect(() => {
-    if (hasHydrated && !isAuthenticated) router.replace('/auth/login');
+    if (hasHydrated && !isAuthenticated) router.replace('/medxrescue/login');
   }, [hasHydrated, isAuthenticated, router]);
 
   useEffect(() => {
