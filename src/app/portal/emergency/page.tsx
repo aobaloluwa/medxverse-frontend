@@ -175,13 +175,26 @@ export default function PatientEmergencyPage() {
     }
     setLocationState('loading');
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setLatitude(String(lat));
         setLongitude(String(lng));
         setAccuracy(pos.coords.accuracy);
         setLocationState('success');
+
+        // Reverse geocode to fill landmark/description with exact real address
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+          const geoData = await res.json();
+          if (geoData?.display_name) {
+            const shortName = geoData.display_name.split(',').slice(0, 3).join(', ');
+            setLandmark(shortName);
+            setLocationDescription(geoData.display_name);
+          }
+        } catch {
+          // ignore reverse geocoding failure
+        }
 
         // Record breadcrumb locally (for offline queue)
         offlineGpsTracker.recordBreadcrumb({

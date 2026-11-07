@@ -98,6 +98,22 @@ export default function RescueCrewRegisterPage() {
     setLoading(true);
     setErrorMessage(null);
 
+    let coords: { latitude?: number; longitude?: number; accuracyMeters?: number } = {};
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 });
+        });
+        coords = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracyMeters: pos.coords.accuracy,
+        };
+      } catch {
+        // ignore geolocation rejection during register
+      }
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/medxrescue/auth/register`, {
         method: 'POST',
@@ -112,6 +128,7 @@ export default function RescueCrewRegisterPage() {
           registrationNumber: formData.registrationNumber.trim() || undefined,
           makeModel: formData.makeModel.trim() || undefined,
           vehicleClass: formData.vehicleClass,
+          ...coords,
         }),
       });
 
