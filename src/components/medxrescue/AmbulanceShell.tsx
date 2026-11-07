@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
   Ambulance,
-  ArrowRight,
   Building2,
   ChevronRight,
   Crosshair,
@@ -17,6 +17,7 @@ import {
   Menu,
   Navigation,
   PanelLeft,
+  Search,
   ShieldCheck,
   Siren,
   UserCheck,
@@ -41,7 +42,7 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const displayName = account?.name || "Paramedic Crew";
-  const hospitalName = (account as any)?.hospitalName || "Host Hospital Emergency Dept";
+  const hospitalName = (account as any)?.hospitalName || "Host Hospital Workspace";
   const userRole = (account as any)?.role || "Paramedic";
 
   const initials = useMemo(
@@ -70,37 +71,91 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
     return <>{children}</>;
   }
 
+  if (!hasHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f7f6]">
+        <Activity className="h-7 w-7 animate-pulse text-[#1b7b68]" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#f4faf8] font-sans antialiased text-slate-900">
-      {/* Desktop Sidebar */}
+    <div className="min-h-screen bg-[#f4f7f6] font-sans text-slate-800">
+      {/* Topbar Header */}
+      <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between border-b border-slate-100 bg-white/95 px-4 backdrop-blur-md md:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.innerWidth < 768) {
+                setMobileOpen((value) => !value);
+              } else {
+                setCollapsed((value) => !value);
+              }
+            }}
+            className="rounded-xl p-2 text-slate-500 transition hover:bg-[#e8f5f3] hover:text-[#1b7b68]"
+            aria-label="Toggle navigation"
+          >
+            <PanelLeft className="h-5 w-5" />
+          </button>
+
+          <Link href="/medxrescue/crew" className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68] text-white shadow-md shadow-[#1b7b68]/20">
+              <Siren className="h-5 w-5 animate-pulse" />
+            </div>
+
+            <div className="hidden min-w-0 sm:block">
+              <p className="truncate text-sm font-bold tracking-tight text-slate-800">
+                MedXRescue Portal
+              </p>
+
+              <p className="truncate text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                {hospitalName}
+              </p>
+            </div>
+          </Link>
+        </div>
+
+        <div className="hidden max-w-xl flex-1 px-6 md:block">
+          <div className="relative block">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search active offers, incidents, vehicles, ePCR records..."
+              className="w-full rounded-2xl border border-slate-100 bg-slate-50 py-2.5 pl-10 pr-4 text-xs text-slate-700 outline-none transition placeholder:text-slate-400 hover:border-[#1b7b68]/30 hover:bg-white focus:border-[#1b7b68] focus:bg-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 md:gap-2">
+          <span className="hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-800 sm:flex">
+            <span className="h-2 w-2 animate-ping rounded-full bg-emerald-500" />
+            Live GPS Active
+          </span>
+
+          <div className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
+
+          <div className="flex items-center gap-2 pl-1">
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-[#1b7b68]/20 bg-[#e8f5f3] text-xs font-bold text-[#1b7b68]">
+              {initials}
+            </div>
+
+            <div className="hidden max-w-32 sm:block">
+              <p className="truncate text-[11px] font-bold text-slate-800">{displayName}</p>
+              <p className="truncate text-[9px] font-semibold uppercase tracking-[0.18em] text-[#1b7b68]">
+                {userRole}
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Desktop Fixed Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 hidden border-r border-teal-100 bg-white shadow-sm transition-all duration-300 lg:flex lg:flex-col ${
+        className={`fixed inset-y-0 left-0 top-16 z-40 hidden flex-col border-r border-slate-100 bg-white transition-all duration-300 md:flex ${
           collapsed ? "w-20" : "w-64"
         }`}
       >
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-teal-50 px-4">
-          <Link href="/medxrescue/crew" className="flex items-center gap-3 overflow-hidden">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#125447] text-white shadow-md shadow-teal-900/10">
-              <Siren size={20} className="animate-pulse" />
-            </span>
-            {!collapsed && (
-              <div className="min-w-0">
-                <p className="text-sm font-black tracking-tight text-slate-900">MedXRescue</p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]">Crew Workstation</p>
-              </div>
-            )}
-          </Link>
-
-          <button
-            type="button"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? "Expand navigation sidebar" : "Collapse navigation sidebar"}
-            className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-teal-50 hover:text-[#1b7b68] transition"
-          >
-            <PanelLeft size={16} />
-          </button>
-        </div>
-
         <nav className="flex-1 space-y-1.5 p-3 overflow-y-auto">
           {navigation.map((item) => {
             const active = pathname === item.href;
@@ -109,41 +164,29 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`group flex items-center gap-3 rounded-2xl px-3.5 py-3 text-xs font-extrabold transition ${
+                className={`flex items-center gap-3.5 rounded-2xl px-3.5 py-3 text-xs font-semibold transition-all ${
                   active
-                    ? "bg-[#1b7b68] text-white shadow-md shadow-teal-900/15"
-                    : "text-slate-600 hover:bg-teal-50 hover:text-[#1b7b68]"
+                    ? "bg-[#1b7b68] font-bold text-white shadow-md shadow-[#1b7b68]/20"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                 }`}
                 title={collapsed ? item.label : undefined}
               >
-                <Icon size={18} className={`shrink-0 ${active ? "text-white" : "text-[#1b7b68]"}`} />
+                <Icon className={`h-4 w-4 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
                 {!collapsed && <span className="truncate">{item.label}</span>}
               </Link>
             );
           })}
         </nav>
 
-        <div className="border-t border-teal-50 p-3">
-          <div className={`flex items-center gap-3 rounded-2xl border border-teal-100 bg-[#f7fcfb] p-2.5 ${collapsed ? "justify-center" : ""}`}>
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68] text-xs font-black text-white">
-              {initials}
-            </span>
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-extrabold text-slate-900">{displayName}</p>
-                <p className="truncate text-[10px] font-semibold text-slate-500">{userRole}</p>
-              </div>
-            )}
-          </div>
-
+        <div className="border-t border-slate-100 p-3">
           <button
             type="button"
             onClick={handleLogout}
-            className={`mt-2 flex w-full items-center gap-2 rounded-xl border border-rose-100 bg-rose-50/50 p-2.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100/70 ${
+            className={`flex w-full items-center gap-3.5 rounded-2xl px-3.5 py-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 ${
               collapsed ? "justify-center" : ""
             }`}
           >
-            <LogOut size={16} className="shrink-0" />
+            <LogOut className="h-4 w-4 shrink-0" />
             {!collapsed && <span>Sign out</span>}
           </button>
         </div>
@@ -151,22 +194,22 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
 
       {/* Mobile Drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 md:hidden">
           <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
           <aside className="fixed inset-y-0 left-0 w-72 bg-white p-4 shadow-2xl flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between border-b border-teal-50 pb-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div className="flex items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#1b7b68] text-white">
-                    <Siren size={20} />
+                    <Siren className="h-5 w-5" />
                   </span>
                   <div>
-                    <p className="text-sm font-black text-slate-900">MedXRescue</p>
-                    <p className="text-[10px] font-bold uppercase text-[#1b7b68]">Crew Portal</p>
+                    <p className="text-sm font-bold text-slate-800">MedXRescue Portal</p>
+                    <p className="text-[10px] font-semibold uppercase text-slate-400">{hospitalName}</p>
                   </div>
                 </div>
                 <button onClick={() => setMobileOpen(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
-                  <X size={18} />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
@@ -179,11 +222,11 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
                       key={item.href}
                       href={item.href}
                       onClick={() => setMobileOpen(false)}
-                      className={`flex items-center gap-3 rounded-2xl px-3.5 py-3 text-xs font-extrabold ${
-                        active ? "bg-[#1b7b68] text-white" : "text-slate-600 hover:bg-teal-50"
+                      className={`flex items-center gap-3.5 rounded-2xl px-3.5 py-3 text-xs font-semibold ${
+                        active ? "bg-[#1b7b68] font-bold text-white shadow-md shadow-[#1b7b68]/20" : "text-slate-500 hover:bg-slate-50"
                       }`}
                     >
-                      <Icon size={18} />
+                      <Icon className="h-4 w-4 shrink-0" />
                       <span>{item.label}</span>
                     </Link>
                   );
@@ -193,52 +236,17 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
 
             <button
               onClick={handleLogout}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-700"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-50 p-3 text-xs font-semibold text-rose-600"
             >
-              <LogOut size={16} /> Sign out
+              <LogOut className="h-4 w-4" /> Sign out
             </button>
           </aside>
         </div>
       )}
 
-      {/* Main Container */}
-      <div className={`transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
-        {/* Topbar */}
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-teal-100 bg-white/90 px-4 backdrop-blur-md sm:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setMobileOpen(true)}
-              className="rounded-xl border border-teal-100 bg-teal-50/50 p-2 text-slate-600 hover:text-[#1b7b68] lg:hidden"
-            >
-              <Menu size={18} />
-            </button>
-
-            <div className="hidden sm:flex sm:items-center sm:gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50/80 px-3 py-1 text-xs font-extrabold text-[#1b7b68]">
-                <Building2 size={13} /> {hospitalName}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-800">
-                <span className="h-2 w-2 animate-ping rounded-full bg-emerald-500" />
-                Live GPS Active
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-xs font-extrabold text-slate-900 sm:text-sm">{displayName}</p>
-              <p className="text-[10px] font-extrabold uppercase text-[#1b7b68]">{userRole}</p>
-            </div>
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#1b7b68] text-sm font-black text-white shadow-md shadow-teal-900/10">
-              {initials}
-            </div>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+      {/* Main Page Container */}
+      <div className={`pt-16 transition-all duration-300 ${collapsed ? "md:pl-20" : "md:pl-64"}`}>
+        <main className="min-h-[calc(100vh-4rem)] bg-[#f4f7f6] p-4 md:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );
