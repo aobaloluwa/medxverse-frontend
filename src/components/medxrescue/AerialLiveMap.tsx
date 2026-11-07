@@ -360,17 +360,14 @@ export default function AerialLiveMap({
       });
     });
 
-    // Render Live Moving Ambulances Uber-Style
+    // Render Live Moving Ambulances
     vehicles.forEach(vehicle => {
       const coords = vehicle.location?.coordinates;
       if (!coords || coords.length !== 2) return;
       const [lng, lat] = coords;
 
-      // Smooth Live Movement Simulation Offset along Ogbomoso Streets
-      const charCode = (vehicle.registrationNumber || 'AMB').charCodeAt(0);
-      const moveOffset = Math.sin((movementTick * 0.05) + charCode) * 0.0015;
-      const currentLat = lat + moveOffset;
-      const currentLng = lng + (moveOffset * 0.6);
+      const currentLat = lat;
+      const currentLng = lng;
 
       bounds.push([currentLat, currentLng]);
 

@@ -310,11 +310,12 @@ export default function SmartCarNavigationHud({
       ? [activeIncident.location.coordinates[1], activeIncident.location.coordinates[0]]
       : [6.6018, 3.3515];
 
-    const currentLat = hospCoords[0] + (emgCoords[0] - hospCoords[0]) * (progressPercent / 100);
-    const currentLng = hospCoords[1] + (emgCoords[1] - hospCoords[1]) * (progressPercent / 100);
+    const ambRealCoords: [number, number] = activeVehicle.location?.coordinates
+      ? [activeVehicle.location.coordinates[1], activeVehicle.location.coordinates[0]]
+      : [hospCoords[0] + (emgCoords[0] - hospCoords[0]) * (progressPercent / 100), hospCoords[1] + (emgCoords[1] - hospCoords[1]) * (progressPercent / 100)];
 
-    // Smooth LatLng Glide (No map jumps!)
-    ambMarkerRef.current.setLatLng([currentLat, currentLng]);
+    // Smooth LatLng Glide to real GPS position
+    ambMarkerRef.current.setLatLng(ambRealCoords);
 
   }, [progressPercent, activeFacility, activeIncident]);
 
