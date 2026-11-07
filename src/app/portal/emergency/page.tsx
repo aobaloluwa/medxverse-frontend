@@ -18,6 +18,7 @@ import {
 import DynamicAerialMap from '@/components/medxrescue/DynamicAerialMap';
 import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
 import { offlineGpsTracker, type GpsBreadcrumb } from '@/lib/offline-gps-tracker';
+import { playEmergencyBeeper } from '@/lib/emergency-beeper';
 
 const steps: { status: IncidentStatus; label: string; detail: string }[] = [
   { status: 'REQUEST_RECEIVED', label: 'Request received', detail: 'Recorded in MedXVerse Nexus. Hospital dispatch team notified.' },
@@ -282,6 +283,7 @@ export default function PatientEmergencyPage() {
       setActiveRef(reference);
       setActiveToken(res.accessToken);
       setActiveIncident(incident);
+      playEmergencyBeeper('SOS_ALERT', 2);
       setNotice('Emergency SOS request sent successfully! Hospital dispatch teams have been notified.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send emergency request.');

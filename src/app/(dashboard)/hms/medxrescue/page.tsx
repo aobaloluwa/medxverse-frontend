@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -9,6 +9,7 @@ import {
   PhoneCall, Users, AlertTriangle, XCircle, Crosshair, Video, Phone
 } from 'lucide-react';
 import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
+import { playEmergencyBeeper } from '@/lib/emergency-beeper';
 import {
   medxRescueService,
   type IncidentPriority,
@@ -101,11 +102,17 @@ export default function MedxRescueDispatchPage() {
     }
   };
 
+  const prevCountRef = useRef<number | null>(null);
+
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setRefreshing(true);
     try {
       const response = await medxRescueService.listIncidents();
       const items = response.data?.incidents || [];
+      if (prevCountRef.current !== null && items.length > prevCountRef.current) {
+        playEmergencyBeeper('SOS_ALERT', 2);
+      }
+      prevCountRef.current = items.length;
       setIncidents(items);
       setTotal(response.data?.total || items.length);
       setSelectedId(current => items.some(i => String(i._id || i.id) === current) ? current : String(items[0]?._id || items[0]?.id || ''));

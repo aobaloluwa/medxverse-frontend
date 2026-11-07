@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from '@/store/useAuthStore';
 import { medxRescueService, type DispatchOffer, type RescueIncident, type RescueVehicle } from '@/services/medxrescue.service';
 import AmbulanceShell from '@/components/medxrescue/AmbulanceShell';
+import { playEmergencyBeeper } from '@/lib/emergency-beeper';
 
 const idOf = (value: unknown) => typeof value === 'string' ? value : value && typeof value === 'object' && '_id' in value ? String((value as { _id: unknown })._id) : '';
 const incidentOf = (value: RescueIncident | string) => typeof value === 'string' ? null : value;
@@ -173,6 +174,9 @@ export default function MedxRescueCrewPage() {
       const response = await medxRescueService.respondToOffer(offer._id, {
         accept, vehicleId, note: notes[offer._id] || undefined,
       });
+      if (accept) {
+        playEmergencyBeeper('DISPATCH_BEEP');
+      }
       setNotice(response.message || (accept
         ? 'Offer accepted. The incident is awaiting dispatcher confirmation; it is not yet a confirmed dispatch.'
         : 'Offer declined. Dispatch can continue searching for another suitable provider.'));
