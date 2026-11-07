@@ -1,125 +1,188 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Mail, Lock, ArrowRight, AlertCircle, Loader2, Eye, EyeOff, Siren, Ambulance, Building2 } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  Mail,
+  Lock,
+  ArrowRight,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Eye,
+  EyeOff,
+  Siren,
+  Ambulance,
+} from 'lucide-react';
+
 import { useAuthStore } from '@/store/useAuthStore';
 import { API_BASE_URL } from '@/services/appointment.service';
 
-export default function RescueCrewLoginPage() {
+function RescueCrewLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const setAuth = useAuthStore((state) => state.setAuth);
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const isJustRegistered = searchParams.get('registered') === 'true';
+  const registeredEmail = searchParams.get('email') || '';
+
+  const [formData, setFormData] = useState({
+    email: registeredEmail,
+    password: '',
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((current) => ({
+      ...current,
+      [e.target.name]: e.target.value,
+    }));
+    if (errorMessage) setErrorMessage(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
+    setErrorMessage(null);
 
     try {
       const response = await fetch(`${API_BASE_URL}/medxrescue/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: formData.email.trim(), password: formData.password }),
       });
 
       const payload = await response.json();
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.message || 'Sign in failed. Check your email address and password.');
+        throw new Error(payload.message || 'Authentication failed. Invalid email or password.');
       }
 
       const { token, user } = payload.data;
-      setAuth(token, user);
+      setAuth(user, token);
       router.replace('/medxrescue/crew');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in failed.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Authentication failed. Invalid email or password.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-[#f4faf8] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <Link href="/medxrescue/crew" className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#125447] text-white shadow-lg shadow-teal-900/15">
-            <Siren size={28} className="animate-pulse" />
-          </Link>
-          <p className="mt-4 text-xs font-black uppercase tracking-[0.2em] text-[#1b7b68]">MedXRescue Nexus</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Ambulance Crew Sign In</h1>
-          <p className="mt-2 text-xs leading-5 text-slate-500">Sign in to your crew account to access live dispatch offers, GPS telemetry, and ePCR workstation.</p>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1b7b68] px-5 py-10 font-sans">
+      <div aria-hidden="true" className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full border border-white/[0.035] bg-white/[0.025]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-48 top-1/3 h-[620px] w-[620px] rounded-full border border-white/[0.035] bg-white/[0.025]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-64 -left-20 h-[560px] w-[560px] rounded-full border border-black/[0.035] bg-black/[0.025]" />
+
+      <div className="relative z-10 w-full max-w-[390px]">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white backdrop-blur-sm border border-white/20">
+            <Siren className="h-6 w-6 animate-pulse" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            Ambulance Crew Sign In
+          </h1>
+          <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.22em] text-white/65">
+            MedXRescue Emergency Workstation
+          </p>
         </div>
 
-        <div className="rounded-3xl border border-teal-100 bg-white p-6 shadow-xl shadow-teal-900/5 sm:p-8">
-          {error && (
-            <div role="alert" className="mb-5 flex gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">
-              <AlertCircle size={16} className="shrink-0 text-rose-600" />
-              <span>{error}</span>
+        <div className="mb-4 space-y-2">
+          {isJustRegistered && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-white/15 bg-white/10 px-3.5 py-3 text-xs text-white backdrop-blur-sm">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Crew account created successfully. Please sign in with your credentials.</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-extrabold uppercase text-slate-700">Email Address</label>
-              <div className="relative mt-1.5">
-                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="paramedic@medxrescue.ng"
-                  className="w-full rounded-2xl border border-slate-200 py-3 pl-10 pr-4 text-sm font-medium outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-[#1b7b68]/15"
-                />
-              </div>
+          {errorMessage && (
+            <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200/25 bg-rose-950/20 px-3.5 py-3 text-xs text-white backdrop-blur-sm">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{errorMessage}</span>
             </div>
-
-            <div>
-              <label className="block text-xs font-extrabold uppercase text-slate-700">Password</label>
-              <div className="relative mt-1.5">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-2xl border border-slate-200 py-3 pl-10 pr-10 text-sm font-medium outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-[#1b7b68]/15"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1b7b68] py-3.5 text-xs font-black text-white shadow-md transition hover:bg-[#156354] disabled:opacity-50"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <><span>Sign In to Crew Portal</span> <ArrowRight size={16} /></>}
-            </button>
-          </form>
-
-          <div className="mt-6 border-t border-slate-100 pt-5 text-center text-xs text-slate-500">
-            Need an ambulance crew account?{' '}
-            <Link href="/medxrescue/register" className="font-extrabold text-[#1b7b68] hover:underline">
-              Register Crew Account
-            </Link>
-          </div>
+          )}
         </div>
+
+        <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/60">
+          <span>Secure paramedic &amp; driver sign in</span>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          <div className="group relative">
+            <label htmlFor="email" className="sr-only">Account email</label>
+            <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+            <input
+              id="email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="OFFICIAL CREW EMAIL"
+              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+            />
+          </div>
+
+          <div className="group relative">
+            <label htmlFor="password" className="sr-only">Password</label>
+            <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              name="password"
+              autoComplete="current-password"
+              required
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="PASSWORD"
+              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 pr-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/55 transition-colors hover:text-white"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-1 flex h-12 w-full items-center justify-center gap-2 rounded-sm bg-white px-4 text-[11px] font-bold uppercase tracking-[0.16em] text-[#1b7b68] shadow-lg shadow-black/10 transition-all hover:bg-white/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-65"
+          >
+            {loading ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /><span>Signing in</span></>
+            ) : (
+              <><span>Login</span><ArrowRight className="h-3.5 w-3.5" /></>
+            )}
+          </button>
+        </form>
+
+        <div className="mt-7 text-center">
+          <p className="text-[11px] text-white/55">
+            Don&apos;t have a crew account?{' '}
+            <Link href="/medxrescue/register" className="font-semibold text-white/90 hover:text-white hover:underline">Register</Link>
+          </p>
+        </div>
+
+        <p className="mt-8 text-center text-[9px] font-medium uppercase tracking-[0.18em] text-white/30">
+          Secure access to MedXRescue Nexus
+        </p>
       </div>
     </main>
+  );
+}
+
+export default function RescueLoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#1b7b68]"><Loader2 className="h-7 w-7 animate-spin text-white" /></div>}>
+      <RescueCrewLoginForm />
+    </Suspense>
   );
 }
