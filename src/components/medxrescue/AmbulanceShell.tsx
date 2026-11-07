@@ -54,7 +54,6 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
   // Vehicle verification state
   const [vehicle, setVehicle] = useState<any>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
-  const [reapplyModal, setReapplyModal] = useState(false);
   const [reapplyLoading, setReapplyLoading] = useState(false);
   const [reapplyNotice, setReapplyNotice] = useState("");
   const [reapplyError, setReapplyError] = useState("");
@@ -154,7 +153,6 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
       }
 
       setReapplyNotice("Vehicle details updated and re-submitted for hospital review!");
-      setReapplyModal(false);
       void loadProfile();
     } catch (err: any) {
       setReapplyError(err?.message || "Re-application failed.");
@@ -176,8 +174,8 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
     );
   }
 
-  const isPending = vehicle?.verificationStatus === "PENDING" || vehicle?.verificationStatus === "UNDER_REVIEW";
-  const isRejected = vehicle?.verificationStatus === "REJECTED";
+  const isPending = vehicle && (vehicle.verificationStatus === "PENDING" || vehicle.verificationStatus === "UNDER_REVIEW");
+  const isRejected = vehicle && vehicle.verificationStatus === "REJECTED";
   const isVerified = !vehicle || vehicle?.verificationStatus === "VERIFIED";
 
   return (
@@ -405,67 +403,62 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
               </div>
             </div>
           ) : isRejected ? (
-            /* LOCKED / REJECTED SCREEN */
+            /* LOCKED / REJECTED SCREEN WITH INLINE RE-APPLICATION FORM */
             <div className="mx-auto max-w-2xl mt-8 space-y-6">
-              <div className="rounded-3xl border border-rose-200/80 bg-white p-6 md:p-8 shadow-sm text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-700">
-                  <XCircle className="h-8 w-8" />
-                </div>
+              <div className="rounded-3xl border border-rose-200/80 bg-white p-6 md:p-8 shadow-sm">
+                <div className="text-center">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-700">
+                    <XCircle className="h-8 w-8" />
+                  </div>
 
-                <span className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3.5 py-1 text-xs font-bold text-rose-800">
-                  Application Rejected
-                </span>
+                  <span className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3.5 py-1 text-xs font-bold text-rose-800">
+                    Application Rejected
+                  </span>
 
-                <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-900">
-                  Ambulance Application Rejected
-                </h2>
+                  <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-900">
+                    Ambulance Application Rejected
+                  </h2>
 
-                <p className="mt-2 text-xs md:text-sm leading-6 text-slate-600">
-                  Your vehicle application for <strong className="text-slate-900">{vehicle?.registrationNumber || "AMB-RES"}</strong> was reviewed and rejected by <strong className="text-slate-900">{hospitalName}</strong>.
-                </p>
-
-                <div className="mt-5 rounded-2xl bg-rose-50/80 border border-rose-200/80 p-4 text-left text-xs leading-5 text-rose-900">
-                  <p className="font-bold flex items-center gap-1.5 text-rose-800">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
-                    Hospital Rejection Reason:
+                  <p className="mt-2 text-xs md:text-sm leading-6 text-slate-600">
+                    Your vehicle application for <strong className="text-slate-900">{vehicle?.registrationNumber || "AMB-RES"}</strong> was reviewed and rejected by <strong className="text-slate-900">{hospitalName}</strong>.
                   </p>
-                  <p className="mt-2 text-xs font-semibold text-rose-900 bg-white/80 p-3 rounded-xl border border-rose-200/60 whitespace-pre-wrap">
-                    {vehicle?.rejectionReason || "Please update vehicle equipment, qualifications, or details and re-apply."}
-                  </p>
+
+                  <div className="mt-5 rounded-2xl bg-rose-50/80 border border-rose-200/80 p-4 text-left text-xs leading-5 text-rose-900">
+                    <p className="font-bold flex items-center gap-1.5 text-rose-800">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                      Hospital Rejection Reason:
+                    </p>
+                    <p className="mt-2 text-xs font-bold text-rose-900 bg-white p-3 rounded-xl border border-rose-200/60 whitespace-pre-wrap">
+                      {vehicle?.rejectionReason || "Please update vehicle equipment, qualifications, or registration details and re-submit your application."}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                  <button
-                    onClick={() => setReapplyModal(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1b7b68] px-5 py-3 text-xs font-bold text-white shadow-md shadow-[#1b7b68]/20 transition-all hover:bg-[#156354]"
-                  >
-                    <Wrench className="h-4 w-4" />
-                    Update Vehicle Details &amp; Re-apply
-                  </button>
-                </div>
-              </div>
+                {/* INLINE RE-APPLICATION FORM DIRECTLY ON THE PAGE */}
+                <div className="mt-8 border-t border-slate-100 pt-6 text-left space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="h-5 w-5 text-[#1b7b68]" />
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Update Vehicle Details &amp; Re-apply
+                    </h3>
+                  </div>
 
-              {/* RE-APPLY MODAL */}
-              {reapplyModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-                  <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                        <Wrench size={18} className="text-[#1b7b68]" />
-                        Update Vehicle &amp; Re-apply
-                      </h3>
-                      <button onClick={() => setReapplyModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100">
-                        <X size={18} />
-                      </button>
+                  {reapplyNotice && (
+                    <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 text-xs font-semibold text-emerald-800 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                      <span>{reapplyNotice}</span>
                     </div>
+                  )}
 
-                    {reapplyError && (
-                      <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs font-semibold text-rose-700">
-                        {reapplyError}
-                      </div>
-                    )}
+                  {reapplyError && (
+                    <div className="rounded-2xl bg-rose-50 border border-rose-200 p-3.5 text-xs font-semibold text-rose-700 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                      <span>{reapplyError}</span>
+                    </div>
+                  )}
 
-                    <form onSubmit={handleReapplySubmit} className="space-y-3.5">
+                  <form onSubmit={handleReapplySubmit} className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className="block text-xs font-bold text-slate-700">Vehicle Registration *</label>
                         <input
@@ -473,7 +466,8 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
                           required
                           value={reapplyForm.registrationNumber}
                           onChange={(e) => setReapplyForm((p) => ({ ...p, registrationNumber: e.target.value }))}
-                          className="mt-1 w-full rounded-2xl border border-slate-200 py-2.5 px-3.5 text-xs outline-none focus:border-[#1b7b68]"
+                          className="mt-1.5 w-full rounded-2xl border border-slate-200 py-3 px-4 text-xs font-medium outline-none focus:border-[#1b7b68]"
+                          placeholder="Registration number (e.g. AMB-911-RES)"
                         />
                       </div>
 
@@ -484,65 +478,69 @@ export default function AmbulanceShell({ children }: AmbulanceShellProps) {
                           required
                           value={reapplyForm.makeModel}
                           onChange={(e) => setReapplyForm((p) => ({ ...p, makeModel: e.target.value }))}
-                          className="mt-1 w-full rounded-2xl border border-slate-200 py-2.5 px-3.5 text-xs outline-none focus:border-[#1b7b68]"
+                          className="mt-1.5 w-full rounded-2xl border border-slate-200 py-3 px-4 text-xs font-medium outline-none focus:border-[#1b7b68]"
+                          placeholder="Make and model"
                         />
                       </div>
+                    </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700">Ambulance Class</label>
-                        <select
-                          value={reapplyForm.vehicleClass}
-                          onChange={(e) => setReapplyForm((p) => ({ ...p, vehicleClass: e.target.value }))}
-                          className="mt-1 w-full rounded-2xl border border-slate-200 py-2.5 px-3.5 text-xs outline-none focus:border-[#1b7b68]"
-                        >
-                          <option value="ADVANCED_LIFE_SUPPORT">Advanced Life Support (ALS)</option>
-                          <option value="BASIC_LIFE_SUPPORT">Basic Life Support (BLS)</option>
-                          <option value="ICU_AMBULANCE">ICU Ambulance</option>
-                          <option value="NEONATAL">Neonatal Intensive Care</option>
-                          <option value="PATIENT_TRANSPORT">Patient Transport</option>
-                        </select>
-                      </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">Ambulance Class</label>
+                      <select
+                        value={reapplyForm.vehicleClass}
+                        onChange={(e) => setReapplyForm((p) => ({ ...p, vehicleClass: e.target.value }))}
+                        className="mt-1.5 w-full rounded-2xl border border-slate-200 py-3 px-4 text-xs font-medium outline-none focus:border-[#1b7b68]"
+                      >
+                        <option value="ADVANCED_LIFE_SUPPORT">Advanced Life Support (ALS)</option>
+                        <option value="BASIC_LIFE_SUPPORT">Basic Life Support (BLS)</option>
+                        <option value="ICU_AMBULANCE">ICU Ambulance</option>
+                        <option value="NEONATAL">Neonatal Intensive Care</option>
+                        <option value="PATIENT_TRANSPORT">Patient Transport</option>
+                      </select>
+                    </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700">Equipment (comma separated)</label>
-                        <textarea
-                          rows={2}
-                          value={reapplyForm.equipment}
-                          onChange={(e) => setReapplyForm((p) => ({ ...p, equipment: e.target.value }))}
-                          className="mt-1 w-full rounded-2xl border border-slate-200 py-2.5 px-3.5 text-xs outline-none focus:border-[#1b7b68]"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">Equipment (comma separated)</label>
+                      <textarea
+                        rows={2}
+                        value={reapplyForm.equipment}
+                        onChange={(e) => setReapplyForm((p) => ({ ...p, equipment: e.target.value }))}
+                        className="mt-1.5 w-full rounded-2xl border border-slate-200 py-3 px-4 text-xs font-medium outline-none focus:border-[#1b7b68]"
+                        placeholder="Defibrillator, Ventilator, Oxygen Cylinder"
+                      />
+                    </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700">Crew Qualifications (comma separated)</label>
-                        <textarea
-                          rows={2}
-                          value={reapplyForm.crewQualifications}
-                          onChange={(e) => setReapplyForm((p) => ({ ...p, crewQualifications: e.target.value }))}
-                          className="mt-1 w-full rounded-2xl border border-slate-200 py-2.5 px-3.5 text-xs outline-none focus:border-[#1b7b68]"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">Crew Qualifications (comma separated)</label>
+                      <textarea
+                        rows={2}
+                        value={reapplyForm.crewQualifications}
+                        onChange={(e) => setReapplyForm((p) => ({ ...p, crewQualifications: e.target.value }))}
+                        className="mt-1.5 w-full rounded-2xl border border-slate-200 py-3 px-4 text-xs font-medium outline-none focus:border-[#1b7b68]"
+                        placeholder="Paramedic, EMT, ACLS Certified"
+                      />
+                    </div>
 
-                      <div className="flex gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setReapplyModal(false)}
-                          className="w-1/2 rounded-2xl border border-slate-200 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={reapplyLoading}
-                          className="w-1/2 rounded-2xl bg-[#1b7b68] py-3 text-xs font-bold text-white shadow-md shadow-[#1b7b68]/20 transition-all hover:bg-[#156354] disabled:opacity-50"
-                        >
-                          {reapplyLoading ? "Submitting..." : "Re-submit Application"}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
+                    <button
+                      type="submit"
+                      disabled={reapplyLoading}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1b7b68] py-3.5 text-xs font-black text-white shadow-md shadow-[#1b7b68]/20 transition-all hover:bg-[#156354] disabled:opacity-50"
+                    >
+                      {reapplyLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Re-submitting to Hospital...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Re-submit Vehicle Application</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
+                    </button>
+                  </form>
                 </div>
-              )}
+              </div>
             </div>
           ) : (
             /* UNLOCKED FULL PORTAL FEATURES WHEN VERIFIED */
