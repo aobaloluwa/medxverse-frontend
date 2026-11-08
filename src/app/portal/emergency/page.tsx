@@ -112,15 +112,22 @@ export default function PatientEmergencyPage() {
     };
   }, [activeRef, activeToken]);
 
-  // Load existing active tracking session from sessionStorage if present
+  // Load existing active tracking session from localStorage & sessionStorage if present
   useEffect(() => {
-    const keys = Object.keys(sessionStorage).filter(k => k.startsWith('medxrescue:'));
+    if (typeof window === 'undefined') return;
+    const sessionKeys = Object.keys(sessionStorage).filter(k => k.startsWith('medxrescue:'));
+    const localKeys = Object.keys(localStorage).filter(k => k.startsWith('medxrescue:'));
+    const keys = [...sessionKeys, ...localKeys];
+
     if (keys.length > 0) {
-      const ref = keys[keys.length - 1].replace('medxrescue:', '');
-      const tok = sessionStorage.getItem(`medxrescue:${ref}`);
+      const refKey = keys[keys.length - 1];
+      const ref = refKey.replace('medxrescue:', '');
+      const tok = sessionStorage.getItem(`medxrescue:${ref}`) || localStorage.getItem(`medxrescue:${ref}`);
       if (ref && tok) {
         setActiveRef(ref);
         setActiveToken(tok);
+        sessionStorage.setItem(`medxrescue:${ref}`, tok);
+        localStorage.setItem(`medxrescue:${ref}`, tok);
       }
     }
   }, []);
@@ -293,6 +300,7 @@ export default function PatientEmergencyPage() {
       }
 
       sessionStorage.setItem(`medxrescue:${reference}`, res.accessToken);
+      localStorage.setItem(`medxrescue:${reference}`, res.accessToken);
       setActiveRef(reference);
       setActiveToken(res.accessToken);
       setActiveIncident(incident);
