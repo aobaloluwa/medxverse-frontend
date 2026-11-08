@@ -77,19 +77,27 @@ export default function RescueOffersPage() {
             <div className="mt-4 divide-y divide-slate-100">
               {offers.map((offer) => {
                 const incident = typeof offer.incidentId === 'object' ? offer.incidentId : null;
+                const isExpired = new Date(offer.expiresAt).getTime() <= Date.now() || offer.status === 'EXPIRED';
+                const displayStatus = isExpired && offer.status === 'PENDING' ? 'EXPIRED' : offer.status;
+
                 return (
                   <div key={offer._id} className="py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="rounded-full border border-teal-200/60 bg-teal-50 px-2.5 py-0.5 text-[10px] font-bold uppercase text-[#1b7b68]">
-                          {label(offer.status)}
+                        <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase ${
+                          displayStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                          displayStatus === 'DECLINED' ? 'bg-rose-50 text-rose-800 border-rose-200' :
+                          displayStatus === 'EXPIRED' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                          'bg-teal-50 text-[#1b7b68] border-teal-200/60'
+                        }`}>
+                          {label(displayStatus)}
                         </span>
                         <span className="text-xs font-bold text-slate-900">
                           {incident?.publicReference || 'Emergency Incident'}
                         </span>
                       </div>
                       <p className="mt-1.5 text-sm font-extrabold text-slate-800">{incident?.chiefComplaint || 'Emergency dispatch offer'}</p>
-                      <p className="mt-1 text-xs text-slate-500">Landmark: {incident?.landmark || 'Location reported'}</p>
+                      <p className="mt-1 text-xs text-slate-500">Landmark: {incident?.landmark || incident?.locationDescription || 'Location reported'}</p>
                     </div>
 
                     <div className="text-right text-xs text-slate-500">

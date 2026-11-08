@@ -364,19 +364,19 @@ export default function MedxRescueCrewPage() {
               <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white p-12 text-sm text-slate-500">
                 <Loader2 className="animate-spin" /> Loading offers…
               </div>
-            ) : offers.length === 0 ? (
+            ) : offers.filter(o => o.status === 'PENDING' && new Date(o.expiresAt).getTime() > Date.now()).length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-[#1b7b68]">
                   <CheckCircle2 size={26} />
                 </div>
                 <h2 className="mt-4 text-lg font-extrabold text-slate-900">No pending dispatch offers</h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  New offers appear here when dispatch sends them to your linked provider. This page refreshes automatically.
+                  New offers appear here when dispatch sends them to your linked provider. Expired and past offers can be viewed under Mission Offers &amp; History.
                 </p>
               </div>
             ) : (
               <div className="grid gap-4">
-                {offers.map(offer => {
+                {offers.filter(o => o.status === 'PENDING' && new Date(o.expiresAt).getTime() > Date.now()).map(offer => {
                   const incident = incidentOf(offer.incidentId);
                   const vehicle = vehicleOf(offer.vehicleId);
                   const coords = incident?.location?.coordinates;

@@ -39,6 +39,7 @@ type AmbulanceShellProps = { children: React.ReactNode };
 
 const navigation = [
   { label: "Crew Workstation", href: "/medxrescue/crew", icon: Siren },
+  { label: "Active Missions", href: "/medxrescue/missions", icon: Activity },
   { label: "Fleet Radar & GIS Map", href: "/medxrescue/fleet", icon: Navigation },
   { label: "Mission Offers & History", href: "/medxrescue/offers", icon: ListOrdered },
   { label: "Vehicle & Readiness", href: "/medxrescue/vehicle", icon: Ambulance },
