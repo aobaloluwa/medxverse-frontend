@@ -112,24 +112,44 @@ export default function PatientEmergencyPage() {
     };
   }, [activeRef, activeToken]);
 
-  // Load existing active tracking session from localStorage & sessionStorage if present
+  // Load existing active emergency from MongoDB database (cross-device database persistence)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const sessionKeys = Object.keys(sessionStorage).filter(k => k.startsWith('medxrescue:'));
-    const localKeys = Object.keys(localStorage).filter(k => k.startsWith('medxrescue:'));
-    const keys = [...sessionKeys, ...localKeys];
-
-    if (keys.length > 0) {
-      const refKey = keys[keys.length - 1];
-      const ref = refKey.replace('medxrescue:', '');
-      const tok = sessionStorage.getItem(`medxrescue:${ref}`) || localStorage.getItem(`medxrescue:${ref}`);
-      if (ref && tok) {
-        setActiveRef(ref);
-        setActiveToken(tok);
-        sessionStorage.setItem(`medxrescue:${ref}`, tok);
-        localStorage.setItem(`medxrescue:${ref}`, tok);
+    let cancelled = false;
+    const fetchDatabaseEmergency = async () => {
+      try {
+        const res = await medxRescueService.getPatientActiveEmergency();
+        if (!cancelled && res?.data?.reference && res?.data?.accessToken) {
+          setActiveRef(res.data.reference);
+          setActiveToken(res.data.accessToken);
+          if (res.data.incident) {
+            setActiveIncident(res.data.incident);
+          }
+          sessionStorage.setItem(`medxrescue:${res.data.reference}`, res.data.accessToken);
+          localStorage.setItem(`medxrescue:${res.data.reference}`, res.data.accessToken);
+          return;
+        }
+      } catch {
+        // fallback to local keys
       }
-    }
+
+      if (typeof window === 'undefined') return;
+      const sessionKeys = Object.keys(sessionStorage).filter(k => k.startsWith('medxrescue:'));
+      const localKeys = Object.keys(localStorage).filter(k => k.startsWith('medxrescue:'));
+      const keys = [...sessionKeys, ...localKeys];
+
+      if (keys.length > 0) {
+        const refKey = keys[keys.length - 1];
+        const ref = refKey.replace('medxrescue:', '');
+        const tok = sessionStorage.getItem(`medxrescue:${ref}`) || localStorage.getItem(`medxrescue:${ref}`);
+        if (ref && tok && !cancelled) {
+          setActiveRef(ref);
+          setActiveToken(tok);
+        }
+      }
+    };
+
+    void fetchDatabaseEmergency();
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch live fleet telemetry for map

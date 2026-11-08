@@ -209,6 +209,8 @@ export const medxRescueService = {
     apiClient.get<never, ApiEnvelope<DispatchOffer[]>>(`/medxrescue/dispatch-offers${providerId ? `?providerId=${encodeURIComponent(providerId)}` : ''}`),
   listHospitalOfferHistory: async () =>
     apiClient.get<never, ApiEnvelope<DispatchOffer[]>>('/medxrescue/dispatch-offers/history'),
+  getPatientActiveEmergency: async () =>
+    apiClient.get<never, ApiEnvelope<{ incident: RescueIncident; reference: string; accessToken: string } | null>>('/medxrescue/patient/active-emergency'),
   respondToOffer: async (offerId: string, input: { accept: boolean; vehicleId: string; providerId?: string; note?: string }) =>
     apiClient.post<never, ApiEnvelope<DispatchOffer>>(`/medxrescue/dispatch-offers/${offerId}/respond`, input),
   getLiveFleet: async () =>
