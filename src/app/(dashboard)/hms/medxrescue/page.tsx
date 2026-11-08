@@ -75,6 +75,7 @@ export default function MedxRescueDispatchPage() {
   const [candidates, setCandidates] = useState<RescueVehicle[]>([]);
   const [selectedVehicles, setSelectedVehicles] = useState<string[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
+  const [vehicleAddresses, setVehicleAddresses] = useState<Record<string, string>>({});
   const [routeVehicleId, setRouteVehicleId] = useState('');
   const [routeEstimate, setRouteEstimate] = useState<RoadRouteEstimate | null>(null);
   const [routeError, setRouteError] = useState('');
@@ -174,7 +175,27 @@ export default function MedxRescueDispatchPage() {
       const items = response.data || [];
       setCandidates(items);
       setRouteVehicleId('');
-      setNotice(items.length ? 'Eligible candidates loaded. Review coverage, vehicle/crew suitability and operating area before approving this offer wave.' : 'No eligible vehicles with fresh GPS are currently available. Contact dispatch partners and use the approved fallback procedure if urgent.');
+      setNotice(items.length ? 'Eligible candidate ambulances loaded with live GPS.' : 'No eligible vehicles available.');
+
+      const newAddresses: Record<string, string> = {};
+      await Promise.all(
+        items.map(async (v) => {
+          if (v.location?.coordinates?.length === 2) {
+            const [lng, lat] = v.location.coordinates;
+            try {
+              const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+              const geoData = await res.json();
+              if (geoData?.display_name) {
+                const shortAddr = geoData.display_name.split(',').slice(0, 3).join(', ');
+                newAddresses[v._id] = shortAddr;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        })
+      );
+      setVehicleAddresses(newAddresses);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load eligible vehicles.');
       setCandidates([]);
@@ -411,11 +432,15 @@ export default function MedxRescueDispatchPage() {
               const gpsTime = vehicle.locationUpdatedAt ? new Date(vehicle.locationUpdatedAt) : null;
               const gpsAge = gpsTime ? Math.max(0, Math.round((Date.now() - gpsTime.getTime()) / 1000)) : null;
               const checked = selectedVehicles.includes(vehicle._id);
-              return <div key={vehicle._id} className={`rounded-xl border p-3 transition ${checked ? 'border-[#1b7b68] bg-teal-50/70' : 'border-slate-200 hover:border-teal-200'}`}><div className="flex items-start gap-3"><input aria-label={`Select ${vehicle.registrationNumber} for dispatch offer wave`} type="checkbox" checked={checked} onChange={e => setSelectedVehicles(prev => e.target.checked ? [...prev, vehicle._id].slice(0, 20) : prev.filter(id => id !== vehicle._id))} className="mt-1 h-4 w-4 accent-[#1b7b68]" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm font-extrabold text-slate-900">{vehicle.registrationNumber} · {vehicle.makeModel}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">GPS fresh</span></div><p className="mt-1 text-xs text-slate-600">{vehicle.provider?.displayName || 'Verified provider'} · {label(vehicle.vehicleClass)}</p><p className="mt-1 text-[11px] text-slate-500">{typeof vehicle.distanceKm === 'number' ? `Approx. ${vehicle.distanceKm} km straight-line distance` : 'Distance unavailable'} · GPS updated {gpsAge === null ? 'time unavailable' : `${gpsAge}s ago`}{vehicle.locationAccuracyMeters ? ` · accuracy ±${Math.round(vehicle.locationAccuracyMeters)} m` : ''}</p>{vehicle.location?.coordinates?.length === 2 ? (
-  <p className="mt-1 text-[11px] font-bold text-[#1b7b68]">
-    📍 Real Device GPS: {vehicle.location.coordinates[1].toFixed(5)}, {vehicle.location.coordinates[0].toFixed(5)}
-  </p>
-) : null}
+              return <div key={vehicle._id} className={`rounded-xl border p-3 transition ${checked ? 'border-[#1b7b68] bg-teal-50/70' : 'border-slate-200 hover:border-teal-200'}`}><div className="flex items-start gap-3"><input aria-label={`Select ${vehicle.registrationNumber} for dispatch offer wave`} type="checkbox" checked={checked} onChange={e => setSelectedVehicles(prev => e.target.checked ? [...prev, vehicle._id].slice(0, 20) : prev.filter(id => id !== vehicle._id))} className="mt-1 h-4 w-4 accent-[#1b7b68]" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm font-extrabold text-slate-900">{vehicle.registrationNumber} · {vehicle.makeModel}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">GPS fresh</span></div><p className="mt-1 text-xs text-slate-600">{vehicle.provider?.displayName || 'Verified provider'} · {label(vehicle.vehicleClass)}</p><p className="mt-1 text-[11px] text-slate-500">{typeof vehicle.distanceKm === 'number' ? `Approx. ${vehicle.distanceKm} km straight-line distance` : 'Distance unavailable'} · GPS updated {gpsAge === null ? 'time unavailable' : `${gpsAge}s ago`}{vehicle.locationAccuracyMeters ? ` · accuracy ±${Math.round(vehicle.locationAccuracyMeters)} m` : ''}</p><p className="mt-1 text-xs font-bold text-[#1b7b68]">
+  📍 Current Location: {
+    vehicleAddresses[vehicle._id] || (
+      vehicle.location?.coordinates?.length === 2
+        ? `${vehicle.location.coordinates[1].toFixed(4)}, ${vehicle.location.coordinates[0].toFixed(4)}`
+        : 'Device GPS Active'
+    )
+  }
+</p>
 <p className="mt-1 text-[10px] font-semibold text-slate-500">Device GPS transmitted live from ambulance crew dashboard.</p>
 <div className="mt-2.5 flex flex-wrap items-center gap-2">
   <button type="button" onClick={e => { e.preventDefault(); setRouteVehicleId(vehicle._id); }} className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-bold text-[#1b7b68] hover:bg-teal-100 transition">🚗 Check Road Estimate</button>
