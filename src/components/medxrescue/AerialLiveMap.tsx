@@ -412,18 +412,57 @@ export default function AerialLiveMap({
         setActivePopupInfo({ type: 'vehicle', item: vehicle });
       });
 
-      // Draw Polyline connecting assigned ambulance to its active incident
+      // Draw Polyline connecting assigned ambulance to active emergency incident
       if (vehicle.activeIncident?.location?.coordinates) {
         const [incLng, incLat] = vehicle.activeIncident.location.coordinates;
         L.polyline([[currentLat, currentLng], [incLat, incLng]], {
-          color: '#f43f5e',
-          weight: 5,
-          dashArray: '8, 12',
+          color: '#111827',
+          weight: 10,
           lineCap: 'round',
-          opacity: 0.95,
+          lineJoin: 'round',
+          opacity: 0.8,
+        }).addTo(layerGroup);
+
+        L.polyline([[currentLat, currentLng], [incLat, incLng]], {
+          color: '#1b7b68',
+          weight: 6,
+          lineCap: 'round',
+          lineJoin: 'round',
+          opacity: 1,
         }).addTo(layerGroup);
       }
     });
+
+    // Draw Polyline connecting active incident on patient portal map
+    if (incidents.length > 0 && vehicles.length > 0) {
+      incidents.forEach(incident => {
+        const incCoords = incident.location?.coordinates;
+        if (!incCoords || incCoords.length !== 2) return;
+        const [incLng, incLat] = incCoords;
+
+        vehicles.forEach(vehicle => {
+          const vehCoords = vehicle.location?.coordinates;
+          if (!vehCoords || vehCoords.length !== 2) return;
+          const [vehLng, vehLat] = vehCoords;
+
+          L.polyline([[vehLat, vehLng], [incLat, incLng]], {
+            color: '#111827',
+            weight: 10,
+            lineCap: 'round',
+            lineJoin: 'round',
+            opacity: 0.8,
+          }).addTo(layerGroup);
+
+          L.polyline([[vehLat, vehLng], [incLat, incLng]], {
+            color: '#1b7b68',
+            weight: 6,
+            lineCap: 'round',
+            lineJoin: 'round',
+            opacity: 1,
+          }).addTo(layerGroup);
+        });
+      });
+    }
 
     currentBoundsRef.current = bounds;
 
