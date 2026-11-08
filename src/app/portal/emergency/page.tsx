@@ -469,7 +469,19 @@ export default function PatientEmergencyPage() {
             {/* Interactive Aerial Satellite Map Component */}
             <DynamicAerialMap
               vehicles={liveFleet?.vehicles || []}
-              incidents={liveFleet?.incidents || []}
+              incidents={
+                activeIncident
+                  ? [
+                      {
+                        id: String(activeIncident._id || activeIncident.id || ''),
+                        reference: activeIncident.publicReference || activeIncident.reference || 'SOS',
+                        priority: activeIncident.priority || 'URGENT',
+                        status: activeIncident.status,
+                        location: activeIncident.location,
+                      } as any,
+                    ]
+                  : []
+              }
               facilities={liveFleet?.facilities || []}
               selectedIncidentId={activeIncident?.id || activeIncident?._id}
               heightClass="h-[480px]"
