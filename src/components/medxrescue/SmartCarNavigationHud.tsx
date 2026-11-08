@@ -208,7 +208,25 @@ export default function SmartCarNavigationHud({
     }
   }, [mapType]);
 
-  // Initial Route & Static Markers Setup
+  // Reverse Geocoding for current vehicle location
+  const [currentVehicleAddress, setCurrentVehicleAddress] = useState<string>('');
+
+  useEffect(() => {
+    if (activeVehicle?.location?.coordinates?.length === 2) {
+      const [lng, lat] = activeVehicle.location.coordinates;
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+        .then((res) => res.json())
+        .then((geoData) => {
+          if (geoData?.display_name) {
+            const shortAddr = geoData.display_name.split(',').slice(0, 3).join(', ');
+            setCurrentVehicleAddress(shortAddr);
+          }
+        })
+        .catch(() => null);
+    }
+  }, [activeVehicle?.location?.coordinates]);
+
+  // Initial Route & Map Markers Setup
   useEffect(() => {
     if (!leafletLoaded || !mapInstanceRef.current || !layerGroupRef.current) return;
     const layerGroup = layerGroupRef.current;
@@ -217,81 +235,105 @@ export default function SmartCarNavigationHud({
     const L = (window as any).L;
     if (!L) return;
 
-    const hospCoords: [number, number] = activeFacility.location?.coordinates
-      ? [activeFacility.location.coordinates[1], activeFacility.location.coordinates[0]]
-      : [6.5910, 3.3450];
+    // Real Ambulance GPS Location
+    const ambCoords: [number, number] = activeVehicle?.location?.coordinates
+      ? [activeVehicle.location.coordinates[1], activeVehicle.location.coordinates[0]]
+      : [8.1336, 4.2401];
 
-    const emgCoords: [number, number] = activeIncident?.location?.coordinates
+    // Real Emergency Patient Location (Only if active incident exists)
+    const emgCoords: [number, number] | null = activeIncident?.location?.coordinates
       ? [activeIncident.location.coordinates[1], activeIncident.location.coordinates[0]]
-      : [6.6018, 3.3515];
+      : null;
 
-    const midLat = hospCoords[0] + (emgCoords[0] - hospCoords[0]) * 0.5;
-    const midLng = hospCoords[1] + (emgCoords[1] - hospCoords[1]) * 0.5;
+    // Real Hospital Location (Only if active facility exists)
+    const hospCoords: [number, number] | null = activeFacility?.location?.coordinates
+      ? [activeFacility.location.coordinates[1], activeFacility.location.coordinates[0]]
+      : null;
 
-    // 1. Static Route Outer Black Casing
-    L.polyline([hospCoords, [midLat, midLng], emgCoords], {
-      color: '#111827',
-      weight: 12,
-      opacity: 0.9,
-      lineCap: 'round',
-      lineJoin: 'round',
-    }).addTo(layerGroup);
+    // 1. Render Route Polyline ONLY WHEN activeIncident is present!
+    if (activeIncident && emgCoords) {
+      const routePoints: [number, number][] = [ambCoords, emgCoords];
+      if (hospCoords) {
+        routePoints.push(hospCoords);
+      }
 
-    // 2. Traffic Segments
-    L.polyline([hospCoords, [midLat, midLng]], {
-      color: '#ef4444',
-      weight: 7,
-      opacity: 1,
-      lineCap: 'round',
-    }).addTo(layerGroup);
+      L.polyline(routePoints, {
+        color: '#111827',
+        weight: 10,
+        opacity: 0.9,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(layerGroup);
 
-    L.polyline([[midLat, midLng], emgCoords], {
-      color: '#f59e0b',
-      weight: 7,
-      opacity: 1,
-      lineCap: 'round',
-    }).addTo(layerGroup);
+      L.polyline(routePoints, {
+        color: '#1b7b68',
+        weight: 6,
+        opacity: 1,
+        lineCap: 'round',
+      }).addTo(layerGroup);
 
-    // 3. Green Destination Stop Pin
-    const destHtml = `
-      <div class="flex flex-col items-center">
-        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-2xl border-2 border-white">
-          <div class="h-3 w-3 rounded-sm bg-white"></div>
+      // Render Patient Destination Stop Pin
+      const destHtml = `
+        <div class="flex flex-col items-center">
+          <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-600 text-white shadow-2xl border-2 border-white font-black text-xs">
+            🚨
+          </div>
+          <div class="h-2 w-1 bg-rose-600"></div>
         </div>
-        <div class="h-2 w-1 bg-emerald-600"></div>
-      </div>
-    `;
-    const destIcon = L.divIcon({ html: destHtml, className: 'uber-dest-pin', iconSize: [32, 40], iconAnchor: [16, 40] });
-    L.marker(emgCoords, { icon: destIcon }).addTo(layerGroup);
+      `;
+      const destIcon = L.divIcon({ html: destHtml, className: 'uber-dest-pin', iconSize: [32, 40], iconAnchor: [16, 40] });
+      L.marker(emgCoords, { icon: destIcon }).addTo(layerGroup);
 
-    // 4. Initial Ambulance Marker Creation
+      if (hospCoords) {
+        const hospHtml = `
+          <div class="flex flex-col items-center">
+            <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-[#1b7b68] text-white shadow-2xl border-2 border-white font-black text-xs">
+              🏥
+            </div>
+            <div class="h-2 w-1 bg-[#1b7b68]"></div>
+          </div>
+        `;
+        const hospIcon = L.divIcon({ html: hospHtml, className: 'uber-hosp-pin', iconSize: [32, 40], iconAnchor: [16, 40] });
+        L.marker(hospCoords, { icon: hospIcon }).addTo(layerGroup);
+      }
+    }
+
+    // 2. Render Ambulance Live Location Pin
     const ambHtml = `
       <div class="relative flex flex-col items-center group cursor-pointer transition-all duration-700">
-        <div class="absolute -inset-2 rounded-full border-2 border-rose-500 bg-rose-500/20 ${sirenActive ? 'animate-ping' : ''}"></div>
+        <div class="absolute -inset-2 rounded-full border-2 border-[#1b7b68] bg-[#1b7b68]/20 animate-ping"></div>
         <div class="relative flex items-center gap-2 rounded-2xl border-2 border-[#1b7b68] bg-white px-3.5 py-1.5 shadow-2xl text-slate-900">
-          <span class="flex h-7 w-7 items-center justify-center rounded-xl bg-[#1b7b68] text-white text-base shadow-md ${sirenActive ? 'animate-bounce' : ''}">🚑</span>
+          <span class="flex h-7 w-7 items-center justify-center rounded-xl bg-[#1b7b68] text-white text-base shadow-md">🚑</span>
           <div class="flex flex-col text-left">
             <div class="flex items-center gap-1">
-              <span class="text-xs font-black uppercase text-slate-900">${activeVehicle.registrationNumber || 'AMB-001'}</span>
-              <span class="rounded bg-rose-600 px-1 text-[8px] font-extrabold text-white">LIVE</span>
+              <span class="text-xs font-black uppercase text-slate-900">${activeVehicle.registrationNumber || 'AMB-UNIT'}</span>
+              <span class="rounded bg-[#1b7b68] px-1 text-[8px] font-extrabold text-white">LIVE GPS</span>
             </div>
-            <span class="text-[10px] font-extrabold text-[#1b7b68]">${Math.round(speed)} km/h</span>
           </div>
         </div>
         <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-[#1b7b68] shadow-md"></div>
       </div>
     `;
     const ambIcon = L.divIcon({ html: ambHtml, className: 'uber-amb-marker', iconSize: [150, 55], iconAnchor: [75, 52] });
-    const ambMarker = L.marker(hospCoords, { icon: ambIcon }).addTo(layerGroup);
+    const ambMarker = L.marker(ambCoords, { icon: ambIcon }).addTo(layerGroup);
     ambMarkerRef.current = ambMarker;
 
-    // Initial center on route mid-point ONCE ONLY
-    if (mapInstanceRef.current && !hasInitialCenterRef.current) {
-      mapInstanceRef.current.setView([midLat, midLng], 16);
-      hasInitialCenterRef.current = true;
+    // Center Map on real ambulance GPS coordinates
+    if (mapInstanceRef.current) {
+      if (activeIncident && emgCoords) {
+        const boundsPoints: [number, number][] = [ambCoords, emgCoords];
+        if (hospCoords) boundsPoints.push(hospCoords);
+        try {
+          mapInstanceRef.current.fitBounds(boundsPoints, { padding: [80, 80], maxZoom: 17 });
+        } catch {
+          mapInstanceRef.current.setView(ambCoords, 17);
+        }
+      } else {
+        mapInstanceRef.current.setView(ambCoords, 17);
+      }
     }
 
-  }, [leafletLoaded, activeFacility, activeIncident]);
+  }, [leafletLoaded, activeFacility, activeIncident, activeVehicle?.location?.coordinates]);
 
   // Smooth Position Updates (Updates LatLng WITHOUT clearing layers or jumping the map!)
   useEffect(() => {
