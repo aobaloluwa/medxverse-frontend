@@ -76,34 +76,62 @@ export default function RescueOffersPage() {
           ) : (
             <div className="mt-4 divide-y divide-slate-100">
               {offers.map((offer) => {
-                const incident = typeof offer.incidentId === 'object' ? offer.incidentId : null;
+                const incident = typeof offer.incidentId === 'object' ? (offer.incidentId as any) : null;
+                const vehicle = typeof offer.vehicleId === 'object' ? (offer.vehicleId as any) : null;
+                const provider = typeof offer.providerId === 'object' ? (offer.providerId as any) : null;
                 const isExpired = new Date(offer.expiresAt).getTime() <= Date.now() || offer.status === 'EXPIRED';
                 const displayStatus = isExpired && offer.status === 'PENDING' ? 'EXPIRED' : offer.status;
 
                 return (
-                  <div key={offer._id} className="py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase ${
-                          displayStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                          displayStatus === 'DECLINED' ? 'bg-rose-50 text-rose-800 border-rose-200' :
-                          displayStatus === 'EXPIRED' ? 'bg-amber-50 text-amber-800 border-amber-200' :
-                          'bg-teal-50 text-[#1b7b68] border-teal-200/60'
-                        }`}>
-                          {label(displayStatus)}
-                        </span>
-                        <span className="text-xs font-bold text-slate-900">
-                          {incident?.publicReference || 'Emergency Incident'}
-                        </span>
+                  <div key={offer._id} className="py-4 space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase ${
+                            displayStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                            displayStatus === 'DECLINED' ? 'bg-rose-50 text-rose-800 border-rose-200' :
+                            displayStatus === 'EXPIRED' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                            'bg-teal-50 text-[#1b7b68] border-teal-200/60'
+                          }`}>
+                            {label(displayStatus)}
+                          </span>
+                          <span className="text-xs font-black text-slate-900">
+                            {incident?.publicReference || 'Emergency Incident'}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-sm font-bold text-slate-900">{incident?.chiefComplaint || 'Emergency dispatch offer'}</p>
                       </div>
-                      <p className="mt-1.5 text-sm font-extrabold text-slate-800">{incident?.chiefComplaint || 'Emergency dispatch offer'}</p>
-                      <p className="mt-1 text-xs text-slate-500">Landmark: {incident?.landmark || incident?.locationDescription || 'Location reported'}</p>
+
+                      <div className="text-right text-xs text-slate-500">
+                        <p className="font-bold text-slate-700">Offered: {offer.offeredAt ? new Date(offer.offeredAt).toLocaleString() : ''}</p>
+                        {offer.respondedAt && <p className="mt-0.5 text-[11px]">Responded: {new Date(offer.respondedAt).toLocaleString()}</p>}
+                      </div>
                     </div>
 
-                    <div className="text-right text-xs text-slate-500">
-                      <p className="font-bold text-slate-700">Offered {offer.offeredAt ? new Date(offer.offeredAt).toLocaleTimeString() : ''}</p>
-                      <p className="mt-0.5 text-[10px]">Expires {offer.expiresAt ? new Date(offer.expiresAt).toLocaleTimeString() : ''}</p>
+                    <div className="grid gap-3 sm:grid-cols-3 rounded-2xl bg-slate-50 p-3.5 text-xs text-slate-700 border border-slate-100">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Assigned Vehicle</p>
+                        <p className="mt-0.5 font-bold text-slate-900">{vehicle ? `${vehicle.registrationNumber} · ${vehicle.makeModel}` : 'Ambulance Unit'}</p>
+                        <p className="text-[11px] text-slate-500">{provider?.displayName || 'Rescue Partner'}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Patient &amp; Contact</p>
+                        <p className="mt-0.5 font-bold text-slate-900">{incident?.callerName || incident?.patientName || 'Emergency Caller'}</p>
+                        <p className="text-[11px] text-[#1b7b68]">{incident?.callerPhone || 'Phone available'}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Landmark Location</p>
+                        <p className="mt-0.5 font-bold text-slate-900">📍 {incident?.landmark || incident?.locationDescription || 'Location reported'}</p>
+                      </div>
                     </div>
+
+                    {offer.responseNote && (
+                      <div className="rounded-xl bg-teal-50/60 border border-teal-100 p-2.5 text-xs text-teal-900 font-medium">
+                        <strong>Audit Rationale:</strong> {offer.responseNote}
+                      </div>
+                    )}
                   </div>
                 );
               })}

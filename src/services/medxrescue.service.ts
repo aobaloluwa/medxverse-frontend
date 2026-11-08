@@ -98,6 +98,8 @@ export interface DispatchOffer {
   offeredAt: string;
   incidentId: RescueIncident | string;
   vehicleId: RescueVehicle | string;
+  providerId?: RescueProvider | { _id?: string; displayName?: string } | string;
+  respondedAt?: string;
   responseNote?: string;
 }
 export interface DispatchEscalation {
@@ -205,6 +207,8 @@ export const medxRescueService = {
     apiClient.post<never, ApiEnvelope<Record<string, unknown>>>('/medxrescue/providers/apply', input),
   listOffers: async (providerId?: string) =>
     apiClient.get<never, ApiEnvelope<DispatchOffer[]>>(`/medxrescue/dispatch-offers${providerId ? `?providerId=${encodeURIComponent(providerId)}` : ''}`),
+  listHospitalOfferHistory: async () =>
+    apiClient.get<never, ApiEnvelope<DispatchOffer[]>>('/medxrescue/dispatch-offers/history'),
   respondToOffer: async (offerId: string, input: { accept: boolean; vehicleId: string; providerId?: string; note?: string }) =>
     apiClient.post<never, ApiEnvelope<DispatchOffer>>(`/medxrescue/dispatch-offers/${offerId}/respond`, input),
   getLiveFleet: async () =>

@@ -57,9 +57,29 @@ function IncidentMap({ incident }: { incident: RescueIncident | null }) {
 
 export default function MedxRescueDispatchPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'RADAR' | 'CONSOLE'>('RADAR');
+  const [activeTab, setActiveTab] = useState<'RADAR' | 'CONSOLE' | 'HISTORY'>('RADAR');
+  const [offerHistory, setOfferHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [incidents, setIncidents] = useState<RescueIncident[]>([]);
   const [liveFleet, setLiveFleet] = useState<LiveFleetData | null>(null);
+
+  const loadOfferHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await medxRescueService.listHospitalOfferHistory();
+      setOfferHistory(res.data || []);
+    } catch {
+      // ignore
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'HISTORY') {
+      void loadOfferHistory();
+    }
+  }, [activeTab, loadOfferHistory]);
   const [total, setTotal] = useState(0);
   const [selectedId, setSelectedId] = useState('');
   const [filter, setFilter] = useState('ACTIVE');
@@ -334,6 +354,13 @@ export default function MedxRescueDispatchPage() {
           >
             <Activity size={14} /> Dispatch Console
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('HISTORY')}
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 transition ${activeTab === 'HISTORY' ? 'bg-[#1b7b68] text-white shadow' : 'text-slate-700 hover:text-slate-900'}`}
+          >
+            <Clock3 size={14} /> Offers History
+          </button>
         </div>
 
         <button
@@ -458,6 +485,106 @@ export default function MedxRescueDispatchPage() {
         {selected && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5"><div className="flex gap-3"><ShieldAlert size={20} className="shrink-0 text-amber-700" /><div className="min-w-0 flex-1"><p className="text-sm font-extrabold text-amber-900">Emergency fallback / escalation</p><p className="mt-1 text-xs leading-5 text-amber-800">Use this when no provider accepts, a delay becomes unsafe, or the platform is unavailable. Recording an escalation does not make a phone call.</p><label className="mt-3 block text-xs font-bold text-amber-900">Fallback channel<select value={escalationChannel} onChange={e => setEscalationChannel(e.target.value as DispatchEscalation['channel'])} className="mt-1.5 w-full rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm"><option value="112">112 / local emergency service</option><option value="PHONE_DISPATCH">Phone dispatch</option><option value="MANUAL_PROVIDER_CONTACT">Manual provider contact</option><option value="OTHER">Other approved procedure</option></select></label><button onClick={() => void recordEscalation(escalationChannel)} disabled={busy || ['CANCELLED', 'HANDED_OVER'].includes(selected.status)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-extrabold text-amber-900 disabled:opacity-50"><PhoneCall size={15} /> Record fallback action</button></div></div></section>}
       </div>
     </div>)}
+
+    {activeTab === 'HISTORY' && (
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div>
+            <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+              <Clock3 size={20} className="text-[#1b7b68]" /> Hospital Dispatch Wave Offers &amp; Audit History
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Full audit log of all emergency offer waves dispatched by this hospital, including timestamps, target ambulances, patient details, and outcome status.
+            </p>
+          </div>
+          <button
+            onClick={() => void loadOfferHistory()}
+            disabled={historyLoading}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={historyLoading ? 'animate-spin' : ''} /> Refresh History
+          </button>
+        </div>
+
+        {historyLoading ? (
+          <div className="p-12 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+            <Loader2 size={16} className="animate-spin text-[#1b7b68]" /> Loading dispatch offer audit history...
+          </div>
+        ) : offerHistory.length === 0 ? (
+          <div className="p-12 text-center bg-slate-50 rounded-2xl border border-slate-100">
+            <CheckCircle2 size={32} className="mx-auto text-[#1b7b68]" />
+            <p className="mt-3 font-bold text-slate-800">No Historical Dispatch Offers</p>
+            <p className="mt-1 text-xs text-slate-500">Dispatch offers sent to ambulances from the command center will appear here with full outcome details.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {offerHistory.map((offer) => {
+              const incident = typeof offer.incidentId === 'object' ? offer.incidentId : null;
+              const vehicle = typeof offer.vehicleId === 'object' ? offer.vehicleId : null;
+              const provider = typeof offer.providerId === 'object' ? offer.providerId : null;
+              const isExpired = new Date(offer.expiresAt).getTime() <= Date.now() || offer.status === 'EXPIRED';
+              const displayStatus = isExpired && offer.status === 'PENDING' ? 'EXPIRED' : offer.status;
+
+              return (
+                <div key={offer._id} className="py-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
+                          displayStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                          displayStatus === 'DECLINED' ? 'bg-rose-50 text-rose-800 border-rose-200' :
+                          displayStatus === 'EXPIRED' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                          displayStatus === 'WITHDRAWN' ? 'bg-slate-100 text-slate-700 border-slate-200' :
+                          'bg-teal-50 text-[#1b7b68] border-teal-200/60'
+                        }`}>
+                          {label(displayStatus)}
+                        </span>
+                        <span className="text-xs font-black text-slate-900">
+                          {incident?.publicReference || 'Emergency Request'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm font-bold text-slate-900">
+                        {incident?.chiefComplaint || 'Emergency dispatch offer'}
+                      </p>
+                    </div>
+
+                    <div className="text-right text-xs text-slate-500">
+                      <p className="font-bold text-slate-700">Sent: {offer.offeredAt ? new Date(offer.offeredAt).toLocaleString() : ''}</p>
+                      {offer.respondedAt && <p className="mt-0.5 text-[11px]">Responded: {new Date(offer.respondedAt).toLocaleString()}</p>}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Target Ambulance</p>
+                      <p className="mt-0.5 font-bold text-slate-900">{vehicle ? `${vehicle.registrationNumber} · ${vehicle.makeModel}` : 'Assigned Vehicle'}</p>
+                      <p className="text-[11px] text-slate-500">{provider?.displayName || 'Rescue Partner'}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Caller &amp; Patient Details</p>
+                      <p className="mt-0.5 font-bold text-slate-900">{incident?.callerName || incident?.patientName || 'Patient'}</p>
+                      <p className="text-[11px] text-[#1b7b68]">{incident?.callerPhone || 'Phone available'}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Location Landmark</p>
+                      <p className="mt-0.5 font-bold text-slate-900">📍 {incident?.landmark || incident?.locationDescription || 'Location reported'}</p>
+                    </div>
+                  </div>
+
+                  {offer.responseNote && (
+                    <div className="rounded-xl bg-teal-50/60 border border-teal-100 p-2.5 text-xs text-teal-900 font-medium">
+                      <strong>Audit Note / Rationale:</strong> {offer.responseNote}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    )}
 
     <div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex gap-3"><ShieldCheck size={20} className="shrink-0 text-[#1b7b68]" /><div><p className="text-sm font-extrabold text-slate-900">Operational safety</p><p className="mt-1 text-xs leading-5 text-slate-500">This interface does not place calls automatically. Do not claim an ambulance is on the way until a verified crew and vehicle are confirmed. Map distances and route ETAs are estimates; follow approved clinical and dispatch protocols.</p></div></div></div>
   </div>;
