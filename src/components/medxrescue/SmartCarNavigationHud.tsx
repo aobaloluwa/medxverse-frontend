@@ -79,14 +79,9 @@ export default function SmartCarNavigationHud({
     location: { type: 'Point', coordinates: [4.2620, 8.1580] },
   };
 
-  const activeIncident = incidents.find(i => i.id === selectedIncidentId) || incidents[0] || {
-    id: 'demo-inc-1',
-    reference: 'MRX-SOS-9921',
-    priority: 'CRITICAL',
-    chiefComplaint: 'Acute Chest Pain & Breathing Difficulty',
-    landmark: 'Takie Square, Ogbomoso, Oyo State',
-    location: { type: 'Point', coordinates: [4.2430, 8.1350] }
-  };
+  const activeIncident = incidents.find(i =>
+    ['REQUEST_RECEIVED', 'DISPATCH_REVIEW', 'OFFERED_TO_CREW', 'CREW_ACCEPTED_PENDING_CONFIRMATION', 'CREW_CONFIRMED', 'EN_ROUTE', 'ON_SCENE', 'TRANSPORTING'].includes(i.status) || i.id === selectedIncidentId
+  ) || null;
 
   const activeFacility = facilities[0] || {
     id: 'demo-fac-1',
@@ -226,7 +221,7 @@ export default function SmartCarNavigationHud({
       ? [activeFacility.location.coordinates[1], activeFacility.location.coordinates[0]]
       : [6.5910, 3.3450];
 
-    const emgCoords: [number, number] = activeIncident.location?.coordinates
+    const emgCoords: [number, number] = activeIncident?.location?.coordinates
       ? [activeIncident.location.coordinates[1], activeIncident.location.coordinates[0]]
       : [6.6018, 3.3515];
 
@@ -306,7 +301,7 @@ export default function SmartCarNavigationHud({
       ? [activeFacility.location.coordinates[1], activeFacility.location.coordinates[0]]
       : [6.5910, 3.3450];
 
-    const emgCoords: [number, number] = activeIncident.location?.coordinates
+    const emgCoords: [number, number] = activeIncident?.location?.coordinates
       ? [activeIncident.location.coordinates[1], activeIncident.location.coordinates[0]]
       : [6.6018, 3.3515];
 
@@ -451,44 +446,51 @@ export default function SmartCarNavigationHud({
         </div>
 
         {/* Origin Hospital ➔ Destination Patient SOS Route Details */}
-        <div className="space-y-2 text-xs">
-          <div className="flex items-center gap-2 rounded-lg bg-teal-50/80 p-2 border border-teal-100">
-            <Building2 size={16} className="text-[#1b7b68] shrink-0" />
-            <div className="min-w-0 flex-1">
-              <span className="text-[9px] font-black uppercase text-[#1b7b68]">FROM DISPATCH BASE</span>
-              <p className="font-extrabold text-slate-900 truncate">{activeFacility.name}</p>
+        {activeIncident ? (
+          <>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center gap-2 rounded-lg bg-teal-50/80 p-2 border border-teal-100">
+                <Building2 size={16} className="text-[#1b7b68] shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-black uppercase text-[#1b7b68]">FROM DISPATCH BASE</span>
+                  <p className="font-extrabold text-slate-900 truncate">{activeFacility.name}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-lg bg-rose-50/80 p-2 border border-rose-100">
+                <MapPin size={16} className="text-rose-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-black uppercase text-rose-600">TO PATIENT SCENE ({activeIncident.reference || 'MRX-SOS'})</span>
+                  <p className="font-extrabold text-slate-900 truncate">{activeIncident.landmark || activeIncident.chiefComplaint || 'Patient Location'}</p>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2 rounded-lg bg-rose-50/80 p-2 border border-rose-100">
-            <MapPin size={16} className="text-rose-600 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <span className="text-[9px] font-black uppercase text-rose-600">TO PATIENT SCENE ({activeIncident.reference})</span>
-              <p className="font-extrabold text-slate-900 truncate">{activeIncident.landmark || activeIncident.chiefComplaint}</p>
+            <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5">
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center border border-slate-200">
+                <span className="text-[9px] font-black uppercase text-slate-500">ESTIMATED REACH TIME</span>
+                <p className="text-lg font-black text-emerald-700 tabular-nums">{etaMinutes} MINS</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center border border-slate-200">
+                <span className="text-[9px] font-black uppercase text-slate-500">ROUTE DISTANCE</span>
+                <p className="text-lg font-black text-[#1b7b68] tabular-nums">{distanceKm} KM</p>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Assumed Distance & Time of Reach Summary */}
-        <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5">
-          <div className="rounded-xl bg-slate-50 p-2.5 text-center border border-slate-200">
-            <span className="text-[9px] font-black uppercase text-slate-500">ESTIMATED REACH TIME</span>
-            <p className="text-lg font-black text-emerald-700 tabular-nums">{etaMinutes} MINS</p>
+            <div className="rounded-xl bg-slate-100 p-2.5 text-xs border border-slate-200">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase text-slate-500">TRIAGE ALERT</span>
+                <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[9px] font-extrabold text-white">{activeIncident.priority || 'CRITICAL'}</span>
+              </div>
+              <p className="mt-1 font-bold text-slate-800 line-clamp-1">{activeIncident.chiefComplaint || 'Emergency Request'}</p>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-2xl bg-teal-50/80 border border-teal-100 p-4 text-center space-y-1">
+            <p className="text-xs font-bold text-[#1b7b68]">Ambulance Standby Mode</p>
+            <p className="text-[11px] text-slate-600">Unit is operational and transmitting live GPS telemetry. Awaiting emergency dispatch assignment.</p>
           </div>
-          <div className="rounded-xl bg-slate-50 p-2.5 text-center border border-slate-200">
-            <span className="text-[9px] font-black uppercase text-slate-500">ROUTE DISTANCE</span>
-            <p className="text-lg font-black text-[#1b7b68] tabular-nums">{distanceKm} KM</p>
-          </div>
-        </div>
-
-        {/* Patient Condition Briefing */}
-        <div className="rounded-xl bg-slate-100 p-2.5 text-xs border border-slate-200">
-          <div className="flex items-center justify-between">
-            <span className="text-[9px] font-black uppercase text-slate-500">TRIAGE ALERT</span>
-            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[9px] font-extrabold text-white">{activeIncident.priority}</span>
-          </div>
-          <p className="mt-1 font-bold text-slate-800 line-clamp-1">{activeIncident.chiefComplaint}</p>
-        </div>
+        )}
       </div>
 
       {/* 2. TOP-RIGHT: Navigation Toolbar (z-[2000] above Leaflet z-400..1000) */}
