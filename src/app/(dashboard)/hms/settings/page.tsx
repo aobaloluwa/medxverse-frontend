@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Siren,
   Clock,
+  Crosshair,
 } from 'lucide-react';
 import { authService } from '@/services/auth.service';
 import { AccountPayload } from '@/types/auth.types';
@@ -84,6 +85,7 @@ export default function HmsSettingsPage() {
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [availabilityMessage, setAvailabilityMessage] = useState('');
   const [facilityId, setFacilityId] = useState<string | null>(null);
+  const [detectingLocation, setDetectingLocation] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,21 +216,7 @@ export default function HmsSettingsPage() {
     setAvailabilityMessage('');
     setError('');
     try {
-      let targetFacilityId = facilityId;
-      if (!targetFacilityId) {
-        const facRes = await apiClient.get<any, any>('/medxrescue/facilities');
-        const facilities = facRes?.data || [];
-        if (facilities.length > 0) {
-          targetFacilityId = facilities[0]._id;
-          setFacilityId(targetFacilityId);
-        }
-      }
-
-      if (!targetFacilityId) {
-        throw new Error('No registered MedXRescue facility found for this hospital account. Please register your hospital facility first.');
-      }
-
-      await apiClient.patch(`/medxrescue/facilities/${targetFacilityId}/availability`, {
+      await apiClient.patch('/medxrescue/facilities/my/availability', {
         availableForEmergency: emergencyAvailability.availableForEmergency,
         availabilityMode: emergencyAvailability.availabilityMode,
         customStartTime: emergencyAvailability.customStartTime,
@@ -245,6 +233,46 @@ export default function HmsSettingsPage() {
     } finally {
       setSavingAvailability(false);
     }
+  };
+
+  const detectAndSaveFacilityLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Browser does not support geolocation.');
+      return;
+    }
+    setDetectingLocation(true);
+    setError('');
+    setAvailabilityMessage('');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          let address: string | undefined;
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
+            const geo = await res.json();
+            if (geo?.display_name) address = geo.display_name;
+          } catch {
+            // ignore
+          }
+
+          await apiClient.patch('/medxrescue/facilities/my/location', {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            address,
+          });
+          setAvailabilityMessage(`Hospital live GPS location captured successfully (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})!`);
+        } catch (err) {
+          setError(getErrorMessage(err, 'Could not save hospital location.'));
+        } finally {
+          setDetectingLocation(false);
+        }
+      },
+      () => {
+        setDetectingLocation(false);
+        setError('Location access permission denied.');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   const currentProfile = profile || account;
@@ -285,14 +313,26 @@ export default function HmsSettingsPage() {
 
       {/* Emergency Availability & Shift Settings Card */}
       <form onSubmit={saveEmergencyAvailability} className="rounded-3xl border-2 border-teal-500/30 bg-white p-6 shadow-sm space-y-5">
-        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-[#1b7b68]">
-            <Siren className="h-6 w-6" />
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-[#1b7b68]">
+              <Siren className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">MedXRescue Emergency Availability &amp; Shift Schedule</h2>
+              <p className="text-xs text-slate-500">Configure whether your hospital accepts automated Uber-style guest emergency matching and active hours.</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-bold text-slate-900">MedXRescue Emergency Availability &amp; Shift Schedule</h2>
-            <p className="text-xs text-slate-500">Configure whether your hospital accepts automated Uber-style guest emergency matching and active hours.</p>
-          </div>
+
+          <button
+            type="button"
+            onClick={detectAndSaveFacilityLocation}
+            disabled={detectingLocation}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-xs font-black text-[#1b7b68] hover:bg-teal-100 shadow-sm disabled:opacity-60"
+          >
+            <Crosshair size={14} className={detectingLocation ? 'animate-spin' : ''} />
+            {detectingLocation ? 'Detecting Live GPS…' : '📍 Use My Live GPS Location'}
+          </button>
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
