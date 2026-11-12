@@ -121,9 +121,26 @@ export default function MedxRescueGuestPage() {
       if (ref && tok) {
         setActiveRef(ref);
         setActiveToken(tok);
+        const savedMatch = localStorage.getItem(`medxrescue_match:${ref}`);
+        if (savedMatch) {
+          try { setMatchedHospital(JSON.parse(savedMatch)); } catch {}
+        }
+        const savedConfirmed = localStorage.getItem(`medxrescue_confirmed:${ref}`);
+        if (savedConfirmed === 'true') {
+          setHospitalConfirmed(true);
+        }
       }
     }
   }, []);
+
+  // Save matchedHospital and hospitalConfirmed to localStorage for full reload persistence
+  useEffect(() => {
+    if (typeof window === 'undefined' || !activeRef) return;
+    if (matchedHospital) {
+      localStorage.setItem(`medxrescue_match:${activeRef}`, JSON.stringify(matchedHospital));
+    }
+    localStorage.setItem(`medxrescue_confirmed:${activeRef}`, String(hospitalConfirmed));
+  }, [activeRef, matchedHospital, hospitalConfirmed]);
 
   // Fetch live fleet telemetry for map
   const loadFleet = useCallback(async () => {
