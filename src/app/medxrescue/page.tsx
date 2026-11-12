@@ -716,7 +716,7 @@ export default function MedxRescueGuestPage() {
             <form onSubmit={submitEmergency} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
               <div className="border-b border-slate-100 pb-4 text-center">
                 <span className="text-xs font-black uppercase tracking-widest text-rose-600">
-                  Uber-Style Guest Emergency Dispatch
+                  Guest Emergency Dispatch
                 </span>
                 <h2 className="text-xl font-bold text-slate-900 mt-1">Request Ambulance Help</h2>
                 <p className="text-xs text-slate-500 mt-1">
@@ -772,6 +772,36 @@ export default function MedxRescueGuestPage() {
                     <span className="text-[10px] font-bold opacity-80">±{accuracy ? Math.round(accuracy) : 10}m</span>
                   </div>
                 )}
+
+                {/* Ogbomoso Quick-Select Location Presets */}
+                <div className="pt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Ogbomoso Quick-Select Location Presets:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'LAUTECH Teaching Hospital', lat: 8.1432, lng: 4.2558 },
+                      { name: 'Bowen Univ. Teaching Hosp. (BUTH)', lat: 8.1278, lng: 4.2415 },
+                      { name: 'General Hospital Ogbomoso', lat: 8.1320, lng: 4.2610 },
+                      { name: 'Takie Square', lat: 8.1315, lng: 4.2502 },
+                      { name: 'Arowomole', lat: 8.1520, lng: 4.2810 },
+                    ].map(loc => (
+                      <button
+                        key={loc.name}
+                        type="button"
+                        onClick={() => {
+                          setLatitude(String(loc.lat));
+                          setLongitude(String(loc.lng));
+                          setAccuracy(5);
+                          setLandmark(`${loc.name}, Ogbomoso, Oyo State`);
+                          setLocationDescription(`${loc.name}, Ogbomoso, Oyo State, Nigeria`);
+                          setLocationState('success');
+                        }}
+                        className="rounded-lg border border-teal-200 bg-white px-2.5 py-1 text-[10px] font-extrabold text-[#1b7b68] hover:bg-teal-50 shadow-xs"
+                      >
+                        📍 {loc.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700">
