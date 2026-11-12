@@ -1,20 +1,38 @@
 "use client";
 
-import { FormEvent, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Clock3, Crosshair, HeartPulse, MapPin, PhoneCall, ShieldCheck, Siren } from 'lucide-react';
-import { medxRescueService } from '@/services/medxrescue.service';
+import { useRouter } from 'next/navigation';
+import {
+  Activity, AlertTriangle, Ambulance, ArrowRight, CheckCircle2, Clock3,
+  Crosshair, HeartPulse, MapPin, PhoneCall, ShieldCheck, Siren, XCircle,
+  Loader2, RefreshCw, Building2, WifiOff, Video, Phone, Check, RefreshCcw
+} from 'lucide-react';
+import {
+  medxRescueService,
+  type LiveFleetData,
+  type RescueIncident,
+  type IncidentStatus
+} from '@/services/medxrescue.service';
+import DynamicAerialMap from '@/components/medxrescue/DynamicAerialMap';
+import { openTelemedicineCall } from '@/lib/telemedicine-call-window';
+import { offlineGpsTracker } from '@/lib/offline-gps-tracker';
+import { playEmergencyBeeper } from '@/lib/emergency-beeper';
 
-const teal = '#1b7b68';
-
-function OSMPreview({ latitude, longitude }: { latitude: number; longitude: number }) {
-  const delta = 0.012;
-  const bbox = `${longitude-delta},${latitude-delta},${longitude+delta},${latitude+delta}`;
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${latitude}%2C${longitude}`;
-  return <iframe title="Selected emergency location map" src={src} className="h-52 w-full rounded-xl border border-slate-200" loading="lazy" />;
-}
+const steps: { status: IncidentStatus; label: string; detail: string }[] = [
+  { status: 'REQUEST_RECEIVED', label: 'Request received', detail: 'Recorded in MedXVerse Nexus. Hospital dispatch team notified.' },
+  { status: 'DISPATCH_REVIEW', label: 'Hospital dispatch review', detail: 'A hospital dispatcher is evaluating triage and shortlisting ambulances.' },
+  { status: 'OFFERED_TO_CREW', label: 'Ambulance offered', detail: 'Dispatch wave sent to verified partner ambulances.' },
+  { status: 'CREW_ACCEPTED_PENDING_CONFIRMATION', label: 'Crew accepted', detail: 'Ambulance crew accepted the mission; dispatcher validating.' },
+  { status: 'CREW_CONFIRMED', label: 'Ambulance confirmed', detail: 'Hospital confirmed verified ambulance crew and vehicle.' },
+  { status: 'EN_ROUTE', label: 'Ambulance en route', detail: 'Confirmed ambulance is travelling to your location.' },
+  { status: 'ON_SCENE', label: 'Arrived on scene', detail: 'Ambulance crew has arrived at the reported location.' },
+  { status: 'TRANSPORTING', label: 'Transporting to hospital', detail: 'Patient is aboard and being transported to hospital ED.' },
+  { status: 'HANDED_OVER', label: 'Handover complete', detail: 'Patient handed over to emergency department team.' },
+];
 
 export default function MedxRescueGuestPage() {
+  const router = useRouter();
   const [callerName, setCallerName] = useState('');
   const [callerPhone, setCallerPhone] = useState('');
   const [callerIsPatient, setCallerIsPatient] = useState(true);
@@ -23,131 +41,370 @@ export default function MedxRescueGuestPage() {
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [additionalDetails, setAdditionalDetails] = useState('');
   const [locationDescription, setLocationDescription] = useState('');
-  const [triageAnswers, setTriageAnswers] = useState<Record<string, string>>({});
   const [landmark, setLandmark] = useState('');
+  const [patientCount, setPatientCount] = useState<number | ''>(1);
+  const [language, setLanguage] = useState('English');
+  const [accessibilityNeeds, setAccessibilityNeeds] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [accuracy, setAccuracy] = useState<number | undefined>();
-  const [locationState, setLocationState] = useState<'idle'|'loading'|'success'|'error'>('idle');
-  const [error, setError] = useState('');
+  const [triageAnswers, setTriageAnswers] = useState<Record<string, string>>({});
+
+  const [locationState, setLocationState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [submitting, setSubmitting] = useState(false);
-  const [created, setCreated] = useState<{ reference: string; token: string; status: string } | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Uber-style Smart Hospital Matching State
+  const [matchedHospital, setMatchedHospital] = useState<{ matchedHospital: any; distanceKm: number; estimatedEtaMinutes: number; acceptanceId: string } | null>(null);
+  const [matchingHospital, setMatchingHospital] = useState(false);
+  const [excludedFacilityIds, setExcludedFacilityIds] = useState<string[]>([]);
+  const [hospitalConfirmed, setHospitalConfirmed] = useState(false);
+
+  // Active tracking state
+  const [activeRef, setActiveRef] = useState<string | null>(null);
+  const [activeToken, setActiveToken] = useState<string | null>(null);
+  const [activeIncident, setActiveIncident] = useState<RescueIncident | null>(null);
+  const [familyLink, setFamilyLink] = useState('');
+  const [generatingFamilyLink, setGeneratingFamilyLink] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [liveFleet, setLiveFleet] = useState<LiveFleetData | null>(null);
+
   const idempotencyKeyRef = useRef('');
 
-  const locate = () => {
+  // Network Status & Offline GPS Queue Auto-Sync
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      if (activeRef && activeToken) {
+        void offlineGpsTracker.syncQueue(async (breadcrumbs) => {
+          const last = breadcrumbs[breadcrumbs.length - 1];
+          if (last) {
+            await medxRescueService.updateGuestLocation(activeRef, activeToken, {
+              latitude: last.latitude,
+              longitude: last.longitude,
+              accuracyMeters: last.accuracyMeters,
+            });
+          }
+        });
+      }
+    };
+
+    const handleOffline = () => setIsOnline(false);
+
+    if (typeof window !== 'undefined') {
+      setIsOnline(navigator.onLine);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      }
+    };
+  }, [activeRef, activeToken]);
+
+  // Load existing active emergency from browser session/local storage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sessionKeys = Object.keys(sessionStorage).filter(k => k.startsWith('medxrescue:'));
+    const localKeys = Object.keys(localStorage).filter(k => k.startsWith('medxrescue:'));
+    const keys = [...sessionKeys, ...localKeys];
+
+    if (keys.length > 0) {
+      const refKey = keys[keys.length - 1];
+      const ref = refKey.replace('medxrescue:', '');
+      const tok = sessionStorage.getItem(`medxrescue:${ref}`) || localStorage.getItem(`medxrescue:${ref}`);
+      if (ref && tok) {
+        setActiveRef(ref);
+        setActiveToken(tok);
+      }
+    }
+  }, []);
+
+  // Fetch live fleet telemetry for map
+  const loadFleet = useCallback(async () => {
+    try {
+      const res = await medxRescueService.getLiveFleet();
+      setLiveFleet(res.data);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFleet();
+    const interval = window.setInterval(() => void loadFleet(), 10000);
+    return () => window.clearInterval(interval);
+  }, [loadFleet]);
+
+  // Refresh active incident status
+  const refreshStatus = useCallback(async (quiet = false) => {
+    if (!activeRef || !activeToken) return;
+    if (!quiet) setRefreshing(true);
+    try {
+      const res = await medxRescueService.getGuestIncident(activeRef, activeToken);
+      setActiveIncident(res.data);
+      if (res.data.landmark) setLandmark(res.data.landmark);
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to refresh emergency status.');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [activeRef, activeToken]);
+
+  useEffect(() => {
+    if (activeRef && activeToken) {
+      void refreshStatus();
+      const timer = window.setInterval(() => void refreshStatus(true), 10000);
+      return () => window.clearInterval(timer);
+    }
+  }, [activeRef, activeToken, refreshStatus]);
+
+  // Auto GPS Location detector
+  const locate = useCallback(() => {
     setError('');
     if (!navigator.geolocation) {
       setLocationState('error');
-      setError('This browser cannot access device location. Enter the coordinates from a trusted map or provide a precise landmark.');
+      setError('Browser GPS is unavailable. Please enter a landmark address.');
       return;
     }
     setLocationState('loading');
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLatitude(String(position.coords.latitude));
-        setLongitude(String(position.coords.longitude));
-        setAccuracy(position.coords.accuracy);
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLatitude(String(lat));
+        setLongitude(String(lng));
+        setAccuracy(pos.coords.accuracy);
         setLocationState('success');
+
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+          const geoData = await res.json();
+          if (geoData?.display_name) {
+            const shortName = geoData.display_name.split(',').slice(0, 3).join(', ');
+            setLandmark(shortName);
+            setLocationDescription(geoData.display_name);
+          }
+        } catch {
+          // ignore reverse geocoding failure
+        }
+
+        offlineGpsTracker.recordBreadcrumb({
+          latitude: lat,
+          longitude: lng,
+          accuracyMeters: pos.coords.accuracy,
+          timestamp: new Date().toISOString(),
+        });
       },
       () => {
         setLocationState('error');
-        setError('Location access was unavailable. You can still enter coordinates manually and provide a landmark.');
+        setError('GPS permission denied. Please enter a landmark or street address.');
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    locate();
+  }, [locate]);
+
+  // Launch Emergency Voice Call via Telemedicine calling engine
+  const triggerEmergencyVoiceCall = () => {
+    const callSessionId = activeRef ? `emergency-voice-${activeRef}` : `emergency-voice-${Date.now()}`;
+    openTelemedicineCall(
+      callSessionId,
+      '/medxrescue',
+      `Emergency Voice Call (${callerName || 'Guest SOS'})`,
+      (url) => router.push(url)
     );
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  // Run Uber-style Smart Hospital Matching
+  const runSmartHospitalMatch = async (incidentId: string, exclude: string[] = []) => {
+    setMatchingHospital(true);
     setError('');
+    try {
+      const res = await medxRescueService.matchSmartHospital(incidentId, exclude);
+      setMatchedHospital(res.data);
+      setNotice(`Matched with nearest available hospital: ${res.data.matchedHospital.name} (${res.data.distanceKm} km away, ~${res.data.estimatedEtaMinutes}m ETA).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not match with an available hospital.');
+    } finally {
+      setMatchingHospital(false);
+    }
+  };
+
+  // Submit Guest Emergency SOS
+  const submitEmergency = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError('');
+    setNotice('');
+
     const lat = Number(latitude);
     const lng = Number(longitude);
+
     if (!callerPhone.trim() || !chiefComplaint.trim()) {
       setError('Enter a callback phone number and briefly describe the emergency.');
       return;
     }
-    const hasLatitude = latitude.trim() !== '';
-    const hasLongitude = longitude.trim() !== '';
-    if (hasLatitude !== hasLongitude) {
-      setError('Enter both latitude and longitude, or clear both and provide a landmark or location description.');
+
+    const hasCoordinates = latitude.trim() !== '' && longitude.trim() !== '' && Number.isFinite(lat) && Number.isFinite(lng);
+    const hasLandmark = landmark.trim() !== '' || locationDescription.trim() !== '';
+
+    if (!hasCoordinates && !hasLandmark) {
+      setError('Emergency Location is REQUIRED! Allow GPS access or type a recognizable landmark address so dispatch can locate you.');
       return;
     }
-    const hasCoordinates = hasLatitude && hasLongitude;
-    if (hasCoordinates && (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)) {
-      setError('The coordinates are invalid. Correct them or clear both fields and provide a landmark or location description.');
-      return;
-    }
-    if (!hasCoordinates && !landmark.trim() && !locationDescription.trim()) {
-      setError('Provide a landmark, street/address description, or GPS coordinates so dispatch can locate the emergency. Do not delay calling emergency services.');
-      return;
-    }
+
     setSubmitting(true);
     try {
       if (!idempotencyKeyRef.current) {
         idempotencyKeyRef.current = typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
-          : `mrx-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          : `mrx-guest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       }
+
       const key = idempotencyKeyRef.current;
-      const response = await medxRescueService.createGuestIncident({
+      const combinedDetails = [
+        additionalDetails.trim(),
+        patientCount ? `Approx. Patients: ${patientCount}` : '',
+        language && language !== 'English' ? `Preferred Language: ${language}` : '',
+        accessibilityNeeds ? `Accessibility Needs: ${accessibilityNeeds}` : ''
+      ].filter(Boolean).join(' | ');
+
+      const res = await medxRescueService.createGuestIncident({
         callerName: callerName.trim() || undefined,
         callerPhone: callerPhone.trim(),
         callerIsPatient,
         patientName: callerIsPatient ? undefined : patientName.trim() || undefined,
         patientAge: patientAge ? Number(patientAge) : undefined,
         chiefComplaint: chiefComplaint.trim(),
-        additionalDetails: additionalDetails.trim() || undefined,
+        additionalDetails: combinedDetails || undefined,
         landmark: landmark.trim() || undefined,
         locationDescription: locationDescription.trim() || undefined,
         latitude: hasCoordinates ? lat : undefined,
         longitude: hasCoordinates ? lng : undefined,
         locationAccuracyMeters: hasCoordinates ? accuracy : undefined,
-        triageAnswers: Object.entries(triageAnswers).filter(([, answer]) => answer).map(([questionId, answer]) => ({ questionId, answer })),
+        triageAnswers: Object.entries(triageAnswers)
+          .filter(([, ans]) => ans)
+          .map(([questionId, answer]) => ({ questionId, answer })),
         intakeChannel: 'GUEST_WEB',
       }, key);
-      const incident = response.data;
+
+      const incident = res.data;
       const reference = incident.reference || incident.publicReference;
-      if (!reference || !response.accessToken) throw new Error('The server response did not include the secure tracking details. Contact the dispatcher and do not submit repeatedly.');
-      sessionStorage.setItem(`medxrescue:${reference}`, response.accessToken);
-      setCreated({ reference, token: response.accessToken, status: incident.status });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'We could not send the emergency request. Please call local emergency services where available.');
+      if (!reference || !res.accessToken) {
+        throw new Error('Server response did not include secure tracking access.');
+      }
+
+      sessionStorage.setItem(`medxrescue:${reference}`, res.accessToken);
+      localStorage.setItem(`medxrescue:${reference}`, res.accessToken);
+      setActiveRef(reference);
+      setActiveToken(res.accessToken);
+      setActiveIncident(incident);
+      playEmergencyBeeper('SOS_ALERT', 2);
+      setNotice('Emergency SOS dispatched! Finding nearest available hospital...');
+
+      // Automatically run Uber-style smart hospital matching
+      const incidentId = String(incident._id || incident.id || '');
+      if (incidentId) {
+        await runSmartHospitalMatch(incidentId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send emergency request.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (created) {
-    return (
-      <main className="min-h-screen bg-[#f5faf9] px-4 py-8 sm:px-6">
-        <div className="mx-auto max-w-2xl">
-          <div className="rounded-3xl border border-teal-100 bg-white p-6 shadow-sm sm:p-9">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-[#1b7b68]"><CheckCircle2 size={30}/></div>
-            <p className="mt-5 text-xs font-bold uppercase tracking-[0.18em] text-[#1b7b68]">MedXRescue Nexus</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Emergency request received</h1>
-            <p className="mt-3 leading-7 text-slate-600">Your request has been recorded. A human dispatcher must review it. <strong>This is not confirmation that an ambulance has been dispatched.</strong></p>
-            <div className="mt-6 rounded-2xl bg-slate-50 p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your reference</p>
-              <p className="mt-1 break-all text-xl font-bold text-slate-900">{created.reference}</p>
-              <p className="mt-3 text-sm text-slate-600">Keep this reference private. Your secure tracking access is stored in this browser tab.</p>
-            </div>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Link href={`/medxrescue/status?reference=${encodeURIComponent(created.reference)}`} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-5 py-3 text-sm font-bold text-white hover:bg-[#166657]">Track request <ArrowRight size={16}/></Link>
-              <a href="tel:112" className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 px-5 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50"><PhoneCall size={16}/> Call 112 where available</a>
-            </div>
-            <p className="mt-5 text-xs leading-5 text-slate-500">If the situation is immediately life-threatening, call the locally available emergency number. MedXRescue web intake does not automatically place a phone call.</p>
-          </div>
-        </div>
-      </main>
-    );
-  }
+  const updatePatientLocation = async () => {
+    if (!activeRef || !activeToken) return;
+    setError('');
+    setNotice('');
+    if (!navigator.geolocation) {
+      setError('Browser cannot access GPS.');
+      return;
+    }
 
-  const lat = Number(latitude);
-  const lng = Number(longitude);
-  const hasLocation = latitude.trim() !== '' && longitude.trim() !== '' && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const res = await medxRescueService.updateGuestLocation(activeRef, activeToken, {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracyMeters: pos.coords.accuracy,
+          landmark: landmark.trim() || undefined,
+        });
+        setActiveIncident(res.data);
+        setNotice('Your updated location was sent to the dispatch team.');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Location update failed.');
+      }
+    }, () => setError('Location access denied. Check device permissions.'));
+  };
+
+  const cancelRequest = async () => {
+    if (!activeRef || !activeToken || !window.confirm('Cancel this emergency request?')) return;
+    try {
+      const res = await medxRescueService.cancelGuestIncident(activeRef, activeToken, 'Cancelled by guest');
+      setActiveIncident(res.data);
+      setNotice('Emergency request was cancelled.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not cancel request.');
+    }
+  };
+
+  const generateFamilyLink = async () => {
+    if (!activeRef || !activeToken) return;
+    setGeneratingFamilyLink(true);
+    setError('');
+    try {
+      const res = await medxRescueService.createFamilyTrackingLink(activeRef, activeToken);
+      const url = `${window.location.origin}/medxrescue/status?reference=${res.data.reference}&token=${res.data.familyToken}`;
+      setFamilyLink(url);
+      setNotice('Time-limited family tracking link generated.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate family tracking link.');
+    } finally {
+      setGeneratingFamilyLink(false);
+    }
+  };
+
+  const currentStatus = activeIncident?.status;
+  const isClosed = currentStatus === 'CANCELLED' || currentStatus === 'HANDED_OVER' || currentStatus === 'NO_RESOURCE_AVAILABLE';
+  const currentIndex = steps.findIndex(s => s.status === currentStatus);
+  const hasCoordinates = latitude.trim() !== '' && longitude.trim() !== '';
+
+  const createdAtMs = activeIncident?.createdAt ? new Date(activeIncident.createdAt).getTime() : Date.now();
+  const expiresAtMs = createdAtMs + 20 * 60 * 1000;
+  const [timeRemainingSec, setTimeRemainingSec] = useState<number>(1200);
+
+  useEffect(() => {
+    if (!activeIncident || activeIncident.crewConfirmed || isClosed) return;
+    const remaining = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+    setTimeRemainingSec(remaining);
+
+    const interval = setInterval(() => {
+      const rem = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+      setTimeRemainingSec(rem);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeIncident, expiresAtMs, isClosed]);
+
+  const formatTimer = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const remainingSec = sec % 60;
+    return `${mins}m ${remainingSec < 10 ? '0' : ''}${remainingSec}s`;
+  };
 
   return (
-    <main className="min-h-screen bg-[#f5faf9] text-slate-800">
+    <div className="min-h-screen bg-[#f5faf9] font-sans antialiased text-slate-800">
+      {/* Header */}
       <header className="border-b border-teal-100 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
@@ -163,64 +420,477 @@ export default function MedxRescueGuestPage() {
         </div>
       </header>
 
-      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[0.85fr_1.15fr] lg:px-8 lg:py-12">
-        <div className="space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700"><span className="h-2 w-2 animate-pulse rounded-full bg-rose-500"/> Emergency assistance request</div>
-          <h1 className="max-w-xl text-4xl font-extrabold leading-tight tracking-tight text-slate-950 sm:text-5xl">Get emergency help started.</h1>
-          <p className="max-w-xl text-base leading-7 text-slate-600">Share the emergency and your location so a dispatcher can review the request. You do not need a MedXVerse account or patient ID.</p>
-          <div className="rounded-2xl border border-rose-200 bg-white p-5 shadow-sm">
-            <div className="flex gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600"><AlertTriangle size={21}/></div>
-              <div><h2 className="font-bold text-slate-900">Need urgent help right now?</h2><p className="mt-1 text-sm leading-6 text-slate-600">Call your local emergency service if available. This website does not call emergency services automatically and cannot guarantee an ambulance is available.</p><a href="tel:112" className="mt-3 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700"><PhoneCall size={16}/> Call 112 where available</a></div>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        {/* Offline Banner */}
+        {!isOnline && (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 text-xs font-extrabold flex items-center gap-3">
+            <WifiOff size={18} className="text-amber-700 shrink-0" />
+            <div>
+              <p className="font-black text-amber-950">Offline Mode Active</p>
+              <p className="font-normal text-amber-800">
+                GPS tracking coordinates are being recorded locally on your device and will auto-sync when online.
+              </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            {[{icon:ShieldCheck,title:'Guest access',text:'No account required'},{icon:Clock3,title:'Human review',text:'Dispatcher-led response'},{icon:MapPin,title:'Location first',text:'GPS and landmarks'}].map((item)=><div key={item.title} className="rounded-2xl border border-slate-200 bg-white p-4"><item.icon size={19} className="text-[#1b7b68]"/><p className="mt-3 text-sm font-bold text-slate-900">{item.title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{item.text}</p></div>)}
+        )}
+
+        {/* Header Banner */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#1b7b68]">
+              <Siren size={16} /> MedXVerse Emergency Rescue SOS (Uber-Style Guest Dispatch)
+            </div>
+            <h1 className="mt-1 text-2xl font-extrabold text-slate-900 sm:text-3xl">
+              Order Emergency Assistance
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Request an emergency ambulance instantly. Our smart algorithm matches you with the nearest available hospital based on location, distance, and 24/7 availability.
+            </p>
           </div>
-          <Link href="/medxrescue/providers" className="inline-flex items-center gap-2 text-sm font-semibold text-[#1b7b68] hover:underline">Ambulance provider? Apply for verification <ArrowRight size={15}/></Link>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={triggerEmergencyVoiceCall}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-black text-white hover:bg-[#166657] shadow-md transition"
+            >
+              <PhoneCall size={16} className="text-rose-300 animate-pulse" /> Emergency Voice Call to Hospital
+            </button>
+
+            <a
+              href="tel:112"
+              className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black text-white hover:bg-rose-700 shadow-md transition"
+            >
+              <PhoneCall size={15} /> Direct 112 Call
+            </a>
+          </div>
         </div>
 
-        <form onSubmit={submit} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
-            <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#1b7b68]">Emergency intake</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Tell us what is happening</h2><p className="mt-1 text-sm text-slate-500">Fields marked required are needed to submit.</p></div>
-            <div className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-[#1b7b68] sm:flex"><Siren size={25}/></div>
-          </div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-semibold text-slate-700">Your name <span className="font-normal text-slate-400">(optional)</span><input value={callerName} onChange={e=>setCallerName(e.target.value)} maxLength={120} autoComplete="name" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none transition focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100" placeholder="Name of caller"/></label>
-            <label className="block text-sm font-semibold text-slate-700">Callback phone number <span className="text-rose-600">*</span><input required value={callerPhone} onChange={e=>setCallerPhone(e.target.value)} maxLength={40} autoComplete="tel" inputMode="tel" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none transition focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100" placeholder="e.g. +234 801 234 5678"/></label>
-          </div>
-          <fieldset className="mt-5"><legend className="text-sm font-semibold text-slate-700">Who needs assistance?</legend><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={()=>setCallerIsPatient(true)} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${callerIsPatient?'border-[#1b7b68] bg-teal-50 text-[#1b7b68]':'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Myself</button><button type="button" onClick={()=>setCallerIsPatient(false)} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${!callerIsPatient?'border-[#1b7b68] bg-teal-50 text-[#1b7b68]':'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Someone else</button></div></fieldset>
-          {!callerIsPatient && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="block text-sm font-semibold text-slate-700">Patient name (optional)<input value={patientName} onChange={e=>setPatientName(e.target.value)} maxLength={120} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100"/></label><label className="block text-sm font-semibold text-slate-700">Approximate age (optional)<input type="number" min="0" max="120" value={patientAge} onChange={e=>setPatientAge(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100"/></label></div>}
-          <label className="mt-5 block text-sm font-semibold text-slate-700">What is the emergency? <span className="text-rose-600">*</span><textarea required value={chiefComplaint} onChange={e=>setChiefComplaint(e.target.value)} maxLength={500} rows={3} className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100" placeholder="Briefly describe what happened and any immediate danger."/></label>
-          <section className="mt-5 rounded-2xl border border-rose-100 bg-rose-50/50 p-4">
-            <div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-rose-600"><Activity size={18}/></div><div><h3 className="text-sm font-extrabold text-slate-900">Quick emergency safety questions</h3><p className="mt-1 text-xs leading-5 text-slate-600">Answer if you can do so safely. These answers help a human dispatcher review urgency; they are not a diagnosis and do not replace emergency services. You can submit without answering every question.</p></div></div>
-            <div className="mt-4 space-y-3">
-              {[
-                { id: 'unconscious', question: 'Is the person unconscious or unresponsive?' },
-                { id: 'not_breathing', question: 'Is the person not breathing normally?' },
-                { id: 'severe_breathing_difficulty', question: 'Is there severe difficulty breathing?' },
-                { id: 'severe_bleeding', question: 'Is there severe or uncontrolled bleeding?' },
-                { id: 'stroke_signs', question: 'Are there sudden stroke-like signs (face drooping, arm weakness, speech difficulty)?' },
-                { id: 'seizure', question: 'Is the person having a seizure now or repeated seizures?' },
-              ].map(item => <fieldset key={item.id} className="rounded-xl border border-slate-200 bg-white p-3"><legend className="px-1 text-xs font-bold leading-5 text-slate-800">{item.question}</legend><div className="mt-2 flex flex-wrap gap-2">{['YES', 'NO', 'UNSURE'].map(answer => <button key={answer} type="button" aria-pressed={triageAnswers[item.id] === answer} onClick={() => setTriageAnswers(current => ({ ...current, [item.id]: current[item.id] === answer ? '' : answer }))} className={`rounded-lg border px-3 py-2 text-xs font-bold ${triageAnswers[item.id] === answer ? answer === 'YES' ? 'border-rose-300 bg-rose-100 text-rose-800' : 'border-[#1b7b68] bg-teal-50 text-[#1b7b68]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{answer === 'UNSURE' ? 'Not sure' : answer}</button>)}</div></fieldset>)}
+        {/* Main Grid Layout: Map & Tracking on One Side, SOS Intake Form on Other */}
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+
+          {/* Left Column: Live Satellite Map & Status Progress Tracker */}
+          <div className="space-y-6">
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-teal-50 text-[#1b7b68]">
+                    <HeartPulse size={18} />
+                  </span>
+                  <div>
+                    <h2 className="text-sm font-extrabold text-slate-900">Live Satellite Emergency Radar (Ogbomoso)</h2>
+                    <p className="text-[11px] text-slate-500">LAUTECH LTH, BUTH, General Hospital &amp; live ambulance tracking</p>
+                  </div>
+                </div>
+
+                {activeRef && (
+                  <button
+                    type="button"
+                    onClick={() => void refreshStatus()}
+                    disabled={refreshing}
+                    className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Sync
+                  </button>
+                )}
+              </div>
+
+              <DynamicAerialMap
+                vehicles={liveFleet?.vehicles || []}
+                incidents={
+                  activeIncident
+                    ? [
+                        {
+                          id: String(activeIncident._id || activeIncident.id || ''),
+                          reference: activeIncident.publicReference || activeIncident.reference || 'SOS',
+                          priority: activeIncident.priority || 'URGENT',
+                          status: activeIncident.status,
+                          location: activeIncident.location,
+                        } as any,
+                      ]
+                    : []
+                }
+                facilities={liveFleet?.facilities || []}
+                selectedIncidentId={activeIncident?.id || activeIncident?._id}
+                heightClass="h-[480px]"
+              />
             </div>
-            {Object.values(triageAnswers).some(answer => answer === 'YES') && <p className="mt-3 rounded-lg border border-rose-200 bg-white p-3 text-xs font-semibold leading-5 text-rose-800">A serious warning sign may be present. Call the locally available emergency service immediately if you can. Submitting this form does not place a call or confirm an ambulance.</p>}
-          </section>
-          <label className="mt-4 block text-sm font-semibold text-slate-700">Additional details <span className="font-normal text-slate-400">(optional)</span><textarea value={additionalDetails} onChange={e=>setAdditionalDetails(e.target.value)} maxLength={2000} rows={2} className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100" placeholder="Relevant information to help the dispatcher (do not delay requesting help)."/></label>
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-900">Emergency location</p><p className="mt-1 text-xs text-slate-500">GPS is helpful but not required if you can describe the location or give a recognizable landmark.</p></div><button type="button" onClick={locate} disabled={locationState==='loading'} className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-white px-3.5 py-2.5 text-xs font-bold text-[#1b7b68] disabled:opacity-60"><Crosshair size={15}/>{locationState==='loading'?'Finding location…':'Use my location'}</button></div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="block text-xs font-semibold text-slate-600">Latitude (optional)<input type="number" step="any" value={latitude} onChange={e=>setLatitude(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1b7b68]" placeholder="6.5244"/></label><label className="block text-xs font-semibold text-slate-600">Longitude (optional)<input type="number" step="any" value={longitude} onChange={e=>setLongitude(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1b7b68]" placeholder="3.3792"/></label></div>
-            <label className="mt-3 block text-xs font-semibold text-slate-600">Landmark, street or directions<input value={landmark} onChange={e=>setLandmark(e.target.value)} maxLength={500} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1b7b68]" placeholder="Nearest junction, building, gate or recognizable landmark"/></label>
-            <label className="mt-3 block text-xs font-semibold text-slate-600">Location description (optional)<textarea value={locationDescription} onChange={e=>setLocationDescription(e.target.value)} maxLength={500} rows={2} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1b7b68]" placeholder="Street, estate, LGA, nearby junction, floor or other directions"/></label>
-            {hasLocation && <div className="mt-3"><OSMPreview latitude={lat} longitude={lng}/><p className="mt-1 text-right text-[10px] text-slate-400">Map data © OpenStreetMap contributors</p></div>}
-            {locationState==='success' && <p className="mt-3 text-xs font-semibold text-emerald-700">Location captured{accuracy ? ` (accuracy about ${Math.round(accuracy)} m)` : ''}. Confirm the map pin is close to the emergency.</p>}
+
+            {/* Uber-Style Smart Hospital Matching Display Card */}
+            {activeIncident && matchedHospital && (
+              <div className="rounded-3xl border-2 border-teal-400 bg-teal-50/70 p-6 shadow-md space-y-4">
+                <div className="flex items-center justify-between border-b border-teal-200 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1b7b68] text-white">
+                      <Building2 size={20} />
+                    </span>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[#1b7b68]">
+                        Smart Hospital Match (Uber-Style)
+                      </span>
+                      <h3 className="text-lg font-black text-slate-900">
+                        {matchedHospital.matchedHospital.name}
+                      </h3>
+                    </div>
+                  </div>
+                  <span className="rounded-xl bg-teal-200 px-3 py-1 text-xs font-black text-teal-900">
+                    {matchedHospital.distanceKm} km away (~{matchedHospital.estimatedEtaMinutes} min ETA)
+                  </span>
+                </div>
+
+                <div className="text-xs text-slate-700 space-y-1">
+                  <p><strong>Address:</strong> {matchedHospital.matchedHospital.address}</p>
+                  <p><strong>Emergency Contact:</strong> {matchedHospital.matchedHospital.emergencyContactPhone}</p>
+                  {matchedHospital.matchedHospital.capabilities?.length > 0 && (
+                    <p><strong>Capabilities:</strong> {matchedHospital.matchedHospital.capabilities.join(', ')}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-3 pt-2">
+                  {!hospitalConfirmed ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHospitalConfirmed(true);
+                        setNotice(`Hospital ${matchedHospital.matchedHospital.name} confirmed for your emergency response.`);
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-3 text-xs font-black text-white hover:bg-[#166657] shadow"
+                    >
+                      <Check size={16} /> Confirm Hospital Match
+                    </button>
+                  ) : (
+                    <div className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white text-center flex items-center justify-center gap-2">
+                      <CheckCircle2 size={16} /> Hospital Match Confirmed &amp; Notified!
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={matchingHospital}
+                    onClick={() => {
+                      const currentFacId = matchedHospital.matchedHospital._id;
+                      const newExcluded = [...excludedFacilityIds, currentFacId];
+                      setExcludedFacilityIds(newExcluded);
+                      const incidentId = String(activeIncident._id || activeIncident.id || '');
+                      if (incidentId) {
+                        void runSmartHospitalMatch(incidentId, newExcluded);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-teal-300 bg-white px-4 py-3 text-xs font-black text-[#1b7b68] hover:bg-teal-50"
+                  >
+                    <RefreshCcw size={14} className={matchingHospital ? 'animate-spin' : ''} /> Find Alternative Hospital
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeIncident && (
+              <div className="rounded-3xl border border-teal-200 bg-white p-6 shadow-sm space-y-5">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#1b7b68]">
+                      Active SOS Tracking
+                    </span>
+                    <h3 className="text-xl font-black text-slate-900">
+                      {activeIncident.publicReference || activeIncident.reference}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">{activeIncident.chiefComplaint}</p>
+                  </div>
+
+                  <span className={`rounded-full px-3 py-1 text-xs font-extrabold uppercase ${
+                    currentStatus === 'NO_RESOURCE_AVAILABLE' ? 'bg-rose-100 text-rose-800 border border-rose-200' : isClosed ? 'bg-slate-100 text-slate-700' : 'bg-teal-50 text-[#1b7b68] border border-teal-200'
+                  }`}>
+                    {activeIncident.status.replaceAll('_', ' ')}
+                  </span>
+                </div>
+
+                {!activeIncident.crewConfirmed && !isClosed && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                        <Clock3 size={15} className="text-amber-700" /> Hospital Acceptance Timeout
+                      </span>
+                      <span className="rounded-lg bg-amber-200 px-2 py-0.5 text-xs font-black text-amber-900 tabular-nums">
+                        {formatTimer(timeRemainingSec)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-normal">
+                      Requests automatically expire if no hospital or ambulance confirms within 20 minutes.
+                    </p>
+                  </div>
+                )}
+
+                {currentStatus === 'NO_RESOURCE_AVAILABLE' && (
+                  <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-rose-800 font-extrabold text-xs">
+                      <AlertTriangle size={18} className="text-rose-600" />
+                      <span>Request Expired (20-Minute Timeout)</span>
+                    </div>
+                    <p className="text-xs text-rose-900 leading-relaxed">
+                      No hospital or ambulance confirmed assignment within 20 minutes. Please call 112 or local emergency dispatch immediately.
+                    </p>
+                    <a
+                      href="tel:112"
+                      className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-black text-white hover:bg-rose-700"
+                    >
+                      <PhoneCall size={14} /> Call 112 Emergency Services Now
+                    </a>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-700">Dispatch Progress Status</p>
+                  <div className="space-y-2">
+                    {steps.map((step, idx) => {
+                      const done = idx <= currentIndex;
+                      const isCurrent = step.status === currentStatus;
+                      return (
+                        <div key={step.status} className="flex items-start gap-3">
+                          <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black ${
+                            done ? 'bg-[#1b7b68] text-white' : 'bg-slate-100 text-slate-400'
+                          }`}>
+                            {done ? '✓' : idx + 1}
+                          </div>
+                          <div>
+                            <p className={`text-xs font-bold ${isCurrent ? 'text-[#1b7b68]' : 'text-slate-700'}`}>
+                              {step.label}
+                            </p>
+                            <p className="text-[11px] text-slate-500">{step.detail}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {!isClosed && (
+                  <div className="border-t border-slate-100 pt-4 flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-2 justify-between items-center">
+                      <button
+                        type="button"
+                        onClick={updatePatientLocation}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-xs font-bold text-[#1b7b68] hover:bg-teal-100"
+                      >
+                        <MapPin size={14} /> Send Updated Location
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={generateFamilyLink}
+                        disabled={generatingFamilyLink}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        <Crosshair size={14} /> {generatingFamilyLink ? 'Generating...' : 'Get Family Tracking Link'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={cancelRequest}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                      >
+                        <XCircle size={14} /> Cancel SOS
+                      </button>
+                    </div>
+
+                    {familyLink && (
+                      <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3 text-xs">
+                        <p className="font-bold text-slate-700">Share this secure link with family:</p>
+                        <input
+                          type="text"
+                          readOnly
+                          value={familyLink}
+                          className="mt-1 w-full rounded border border-slate-200 p-2 text-slate-600 outline-none"
+                          onClick={e => e.currentTarget.select()}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          {error && <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-          <button type="submit" disabled={submitting} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-4 text-base font-extrabold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"><Siren size={20}/>{submitting?'Sending emergency request…':'Send emergency request'}</button>
-          <p className="mt-3 text-center text-xs leading-5 text-slate-500">Submitting records a request; it does not guarantee availability or dispatch. If you can safely call emergency services, do so.</p>
-        </form>
-      </section>
-      <footer className="border-t border-teal-100 bg-white px-4 py-5 text-center text-xs text-slate-500">MedXRescue Nexus · Emergency requests are reviewed by authorized human dispatchers.</footer>
-    </main>
+
+          {/* Right Column: SOS Order Intake Form */}
+          <div className="space-y-6">
+            <form onSubmit={submitEmergency} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+              <div className="border-b border-slate-100 pb-4 text-center">
+                <span className="text-xs font-black uppercase tracking-widest text-rose-600">
+                  Uber-Style Guest Emergency Dispatch
+                </span>
+                <h2 className="text-xl font-bold text-slate-900 mt-1">Request Ambulance Help</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Fill in your details below, then press the big round SOS button to dispatch instantly.
+                </p>
+
+                {/* Big Round Glowing Emergency SOS Button (Uber Style) */}
+                <div className="py-6 flex flex-col items-center justify-center">
+                  <button
+                    type="submit"
+                    disabled={submitting || (Boolean(activeIncident) && !isClosed)}
+                    className="group relative flex h-40 w-40 flex-col items-center justify-center rounded-full bg-gradient-to-br from-rose-600 to-rose-700 p-4 text-white shadow-2xl transition-all duration-300 hover:scale-105 hover:from-rose-500 hover:to-rose-600 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-8 border-rose-200/80 animate-pulse"
+                  >
+                    <Siren size={38} className="transition-transform duration-300 group-hover:rotate-12" />
+                    <span className="mt-1 text-lg font-black tracking-widest">EMERGENCY</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-rose-100">SOS DISPATCH</span>
+                  </button>
+                  <p className="mt-3 text-[11px] font-bold text-slate-500">Tap to instantly alert hospital dispatch &amp; match nearest hospital</p>
+                </div>
+              </div>
+
+              {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">{error}</div>}
+              {notice && <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-xs font-semibold text-[#1b7b68]">{notice}</div>}
+
+              {/* Location & Landmark Section (REQUIRED) */}
+              <div className="rounded-2xl border-2 border-teal-500/40 bg-teal-50/50 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin size={16} className="text-[#1b7b68]" />
+                    <span className="text-xs font-black text-slate-900">Emergency Location <span className="text-rose-600">*</span></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={locate}
+                    disabled={locationState === 'loading'}
+                    className="inline-flex items-center gap-1 rounded-xl border border-teal-300 bg-white px-3 py-1.5 text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 shadow-sm"
+                  >
+                    <Crosshair size={13} /> {locationState === 'loading' ? 'Detecting GPS…' : 'Re-Detect GPS'}
+                  </button>
+                </div>
+
+                {locationState === 'loading' && (
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#1b7b68]">
+                    <Loader2 size={14} className="animate-spin" /> Auto-detecting your GPS location…
+                  </div>
+                )}
+
+                {hasCoordinates && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800 flex items-center justify-between">
+                    <span className="font-extrabold flex items-center gap-1">
+                      ✓ GPS Location Auto-Captured ({Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)})
+                    </span>
+                    <span className="text-[10px] font-bold opacity-80">±{accuracy ? Math.round(accuracy) : 10}m</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700">
+                    Landmark / Street Address {!hasCoordinates && <span className="text-rose-600">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    required={!hasCoordinates}
+                    value={landmark}
+                    onChange={e => setLandmark(e.target.value)}
+                    placeholder="e.g. Opposite LAUTECH Main Gate, Takie, Ogbomoso"
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                  />
+                </div>
+              </div>
+
+              {/* Caller & Contact Information */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">Your Name (Optional)</label>
+                  <input
+                    type="text"
+                    value={callerName}
+                    onChange={e => setCallerName(e.target.value)}
+                    placeholder="e.g. Guest Caller"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">Callback Phone <span className="text-rose-600">*</span></label>
+                  <input
+                    type="tel"
+                    required
+                    value={callerPhone}
+                    onChange={e => setCallerPhone(e.target.value)}
+                    placeholder="e.g. +234 801 234 5678"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                  />
+                </div>
+              </div>
+
+              {/* Patient Option */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700">Who Needs Help?</label>
+                <div className="mt-1.5 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCallerIsPatient(true)}
+                    className={`rounded-xl border py-2.5 text-xs font-bold transition ${callerIsPatient ? 'border-[#1b7b68] bg-teal-50 text-[#1b7b68]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    Myself
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCallerIsPatient(false)}
+                    className={`rounded-xl border py-2.5 text-xs font-bold transition ${!callerIsPatient ? 'border-[#1b7b68] bg-teal-50 text-[#1b7b68]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    Someone Else
+                  </button>
+                </div>
+              </div>
+
+              {/* Emergency Description */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700">What is the Emergency? <span className="text-rose-600">*</span></label>
+                <textarea
+                  required
+                  rows={3}
+                  value={chiefComplaint}
+                  onChange={e => setChiefComplaint(e.target.value)}
+                  placeholder="Briefly describe symptoms (e.g. Severe breathing difficulty, accident)"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                />
+              </div>
+
+              {/* Quick Triage Safety Questions */}
+              <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Activity size={16} className="text-rose-600" />
+                  <span className="text-xs font-black text-slate-900">Quick Triage Check</span>
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    { id: 'unconscious', q: 'Is the person unconscious or unresponsive?' },
+                    { id: 'not_breathing', q: 'Is the person struggling to breathe?' },
+                    { id: 'severe_bleeding', q: 'Is there severe bleeding?' },
+                  ].map(item => (
+                    <div key={item.id} className="flex items-center justify-between rounded-xl bg-white p-2.5 border border-slate-200">
+                      <span className="text-xs font-bold text-slate-700">{item.q}</span>
+                      <div className="flex gap-1">
+                        {['YES', 'NO'].map(ans => (
+                          <button
+                            key={ans}
+                            type="button"
+                            onClick={() => setTriageAnswers(prev => ({ ...prev, [item.id]: prev[item.id] === ans ? '' : ans }))}
+                            className={`rounded-lg px-2.5 py-1 text-[10px] font-black ${
+                              triageAnswers[item.id] === ans
+                                ? ans === 'YES' ? 'bg-rose-600 text-white' : 'bg-[#1b7b68] text-white'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {ans}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </main>
+
+      <footer className="border-t border-teal-100 bg-white px-4 py-5 text-center text-xs text-slate-500 mt-12">
+        MedXRescue Nexus · Uber-Style Smart Hospital Matching Engine.
+      </footer>
+    </div>
   );
 }

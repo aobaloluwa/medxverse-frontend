@@ -203,6 +203,8 @@ export const medxRescueService = {
     apiClient.get<never, ApiEnvelope<RoadRouteEstimate>>('/medxrescue/routing/estimate', {
       params: { originLatitude, originLongitude, destinationLatitude, destinationLongitude },
     }),
+  matchSmartHospital: async (incidentId: string, excludeFacilityIds?: string[]) =>
+    apiClient.post<never, ApiEnvelope<{ matchedHospital: any; distanceKm: number; estimatedEtaMinutes: number; acceptanceId: string }>>(`/medxrescue/incidents/${incidentId}/match-hospital`, { excludeFacilityIds }),
   submitProvider: async (input: Record<string, unknown>) =>
     apiClient.post<never, ApiEnvelope<Record<string, unknown>>>('/medxrescue/providers/apply', input),
   listOffers: async (providerId?: string) =>
