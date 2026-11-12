@@ -205,6 +205,10 @@ export const medxRescueService = {
     }),
   matchSmartHospital: async (incidentId: string, excludeFacilityIds?: string[]) =>
     apiClient.post<never, ApiEnvelope<{ matchedHospital: any; distanceKm: number; estimatedEtaMinutes: number; acceptanceId: string }>>(`/medxrescue/incidents/${incidentId}/match-hospital`, { excludeFacilityIds }),
+  previewSmartHospital: async (incidentId: string, exclude?: string[]) =>
+    apiClient.get<never, ApiEnvelope<{ matchedHospital: any; distanceKm: number; estimatedEtaMinutes: number }>>(`/medxrescue/incidents/${incidentId}/preview-hospital-match`, {
+      params: exclude?.length ? { exclude: exclude.join(',') } : undefined
+    }),
   submitProvider: async (input: Record<string, unknown>) =>
     apiClient.post<never, ApiEnvelope<Record<string, unknown>>>('/medxrescue/providers/apply', input),
   listOffers: async (providerId?: string) =>

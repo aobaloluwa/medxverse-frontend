@@ -225,16 +225,35 @@ export default function MedxRescueGuestPage() {
     );
   };
 
-  // Run Uber-style Smart Hospital Matching
+  // Run Uber-style Smart Hospital Matching Preview (does NOT start countdown until confirmed)
   const runSmartHospitalMatch = async (incidentId: string, exclude: string[] = []) => {
     setMatchingHospital(true);
     setError('');
     try {
-      const res = await medxRescueService.matchSmartHospital(incidentId, exclude);
-      setMatchedHospital(res.data);
-      setNotice(`Matched with nearest available hospital: ${res.data.matchedHospital.name} (${res.data.distanceKm} km away, ~${res.data.estimatedEtaMinutes}m ETA).`);
+      const res = await medxRescueService.previewSmartHospital(incidentId, exclude);
+      setMatchedHospital({ matchedHospital: res.data.matchedHospital, distanceKm: res.data.distanceKm, estimatedEtaMinutes: res.data.estimatedEtaMinutes, acceptanceId: '' });
+      setNotice(`Suggested nearest hospital: ${res.data.matchedHospital.name} (${res.data.distanceKm} km away, ~${res.data.estimatedEtaMinutes}m ETA). Please confirm to dispatch.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not match with an available hospital.');
+    } finally {
+      setMatchingHospital(false);
+    }
+  };
+
+  // Confirm Hospital Match (Starts 20-min countdown & notifies facility)
+  const confirmHospitalMatch = async () => {
+    if (!activeIncident || !matchedHospital) return;
+    const incidentId = String(activeIncident._id || activeIncident.id || '');
+    if (!incidentId) return;
+    setMatchingHospital(true);
+    setError('');
+    try {
+      const res = await medxRescueService.matchSmartHospital(incidentId, excludedFacilityIds);
+      setMatchedHospital(res.data);
+      setHospitalConfirmed(true);
+      setNotice(`Hospital ${res.data.matchedHospital.name} confirmed! 20-minute hospital acceptance timer started.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not confirm hospital match.');
     } finally {
       setMatchingHospital(false);
     }
@@ -551,13 +570,11 @@ export default function MedxRescueGuestPage() {
                   {!hospitalConfirmed ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        setHospitalConfirmed(true);
-                        setNotice(`Hospital ${matchedHospital.matchedHospital.name} confirmed for your emergency response.`);
-                      }}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-3 text-xs font-black text-white hover:bg-[#166657] shadow"
+                      disabled={matchingHospital}
+                      onClick={() => void confirmHospitalMatch()}
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-3 text-xs font-black text-white hover:bg-[#166657] shadow disabled:opacity-60"
                     >
-                      <Check size={16} /> Confirm Hospital Match
+                      <Check size={16} /> {matchingHospital ? 'Confirming...' : 'Confirm Hospital Match'}
                     </button>
                   ) : (
                     <div className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white text-center flex items-center justify-center gap-2">
