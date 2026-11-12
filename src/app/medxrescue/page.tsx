@@ -585,7 +585,7 @@ export default function MedxRescueGuestPage() {
               </div>
             )}
 
-            {activeIncident && (
+            {activeIncident && hospitalConfirmed && (
               <div className="rounded-3xl border border-teal-200 bg-white p-6 shadow-sm space-y-5">
                 <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
                   <div>
