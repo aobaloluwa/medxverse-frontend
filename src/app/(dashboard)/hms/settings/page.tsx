@@ -11,10 +11,13 @@ import {
   LockKeyhole,
   Save,
   ShieldCheck,
+  Siren,
+  Clock,
 } from 'lucide-react';
 import { authService } from '@/services/auth.service';
 import { AccountPayload } from '@/types/auth.types';
 import { useAuthStore } from '@/store/useAuthStore';
+import { apiClient } from '@/lib/api-client';
 
 interface ProfileForm {
   name: string;
@@ -68,10 +71,24 @@ export default function HmsSettingsPage() {
   const [passwordMessage, setPasswordMessage] = useState('');
   const [error, setError] = useState('');
 
+  // Emergency availability settings state
+  const [emergencyAvailability, setEmergencyAvailability] = useState({
+    availableForEmergency: true,
+    availabilityMode: '24_7',
+    customStartTime: '08:00',
+    customEndTime: '08:00',
+    resusBaysAvailable: 5,
+    edBedsAvailable: 15,
+    diversionStatus: false,
+  });
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [availabilityMessage, setAvailabilityMessage] = useState('');
+  const [facilityId, setFacilityId] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
-    const loadProfile = async () => {
+    const loadProfileAndFacility = async () => {
       try {
         const response = await authService.getProfile();
         const nextProfile = response.data;
@@ -89,6 +106,23 @@ export default function HmsSettingsPage() {
         if (token) {
           setAuth(nextProfile, token);
         }
+
+        // Load MedXRescue facility data for this hospital
+        const facRes = await apiClient.get<any, any>('/medxrescue/facilities');
+        const facilities = facRes?.data || [];
+        if (!cancelled && facilities.length > 0) {
+          const f = facilities[0];
+          setFacilityId(f._id);
+          setEmergencyAvailability({
+            availableForEmergency: f.availableForEmergency !== false,
+            availabilityMode: f.availabilityMode || '24_7',
+            customStartTime: f.customStartTime || '08:00',
+            customEndTime: f.customEndTime || '08:00',
+            resusBaysAvailable: f.liveCapacity?.resusBaysAvailable ?? 5,
+            edBedsAvailable: f.liveCapacity?.edBedsAvailable ?? 15,
+            diversionStatus: f.liveCapacity?.diversionStatus ?? false,
+          });
+        }
       } catch (requestError) {
         if (!cancelled) {
           setError(getErrorMessage(requestError, 'Unable to load account profile.'));
@@ -98,7 +132,7 @@ export default function HmsSettingsPage() {
       }
     };
 
-    loadProfile();
+    loadProfileAndFacility();
 
     return () => {
       cancelled = true;
@@ -174,6 +208,45 @@ export default function HmsSettingsPage() {
     }
   };
 
+  const saveEmergencyAvailability = async (event: FormEvent) => {
+    event.preventDefault();
+    setSavingAvailability(true);
+    setAvailabilityMessage('');
+    setError('');
+    try {
+      let targetFacilityId = facilityId;
+      if (!targetFacilityId) {
+        const facRes = await apiClient.get<any, any>('/medxrescue/facilities');
+        const facilities = facRes?.data || [];
+        if (facilities.length > 0) {
+          targetFacilityId = facilities[0]._id;
+          setFacilityId(targetFacilityId);
+        }
+      }
+
+      if (!targetFacilityId) {
+        throw new Error('No registered MedXRescue facility found for this hospital account. Please register your hospital facility first.');
+      }
+
+      await apiClient.patch(`/medxrescue/facilities/${targetFacilityId}/availability`, {
+        availableForEmergency: emergencyAvailability.availableForEmergency,
+        availabilityMode: emergencyAvailability.availabilityMode,
+        customStartTime: emergencyAvailability.customStartTime,
+        customEndTime: emergencyAvailability.customEndTime,
+        liveCapacity: {
+          resusBaysAvailable: Number(emergencyAvailability.resusBaysAvailable),
+          edBedsAvailable: Number(emergencyAvailability.edBedsAvailable),
+          diversionStatus: emergencyAvailability.diversionStatus,
+        }
+      });
+      setAvailabilityMessage('Hospital emergency availability & shift schedule updated successfully!');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Unable to update emergency availability.'));
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
+
   const currentProfile = profile || account;
   const accountStatus = currentProfile?.isActive === false ? 'INACTIVE' : 'ACTIVE';
   const accountType = currentProfile?.accountType || 'HOSPITAL';
@@ -187,14 +260,14 @@ export default function HmsSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans antialiased">
       <section>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Account</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Profile & settings</h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Account &amp; Emergency Settings</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Hospital Profile &amp; SOS Availability</h1>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-              Manage your hospital account profile and security. Hospital identity and account status are controlled by the system.
+              Manage your hospital account profile, security, and Uber-style emergency rescue availability, shift schedules, and live bed capacity.
             </p>
           </div>
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#e8f5f3] text-sm font-bold text-[#1b7b68] shadow-sm">
@@ -210,24 +283,141 @@ export default function HmsSettingsPage() {
         </div>
       )}
 
-      <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1b7b68] text-sm font-bold text-white shadow-sm shadow-[#1b7b68]/20">
-            {getInitials(currentProfile?.name || 'Hospital')}
+      {/* Emergency Availability & Shift Settings Card */}
+      <form onSubmit={saveEmergencyAvailability} className="rounded-3xl border-2 border-teal-500/30 bg-white p-6 shadow-sm space-y-5">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-[#1b7b68]">
+            <Siren className="h-6 w-6" />
           </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-bold text-slate-800">{currentProfile?.name || 'Hospital account'}</h2>
-            <p className="mt-1 text-xs text-slate-500">Hospital account</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <span className="rounded-full bg-[#e8f5f3] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-[#1b7b68]">{accountType}</span>
-              {currentProfile?.code && (
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">Hospital ID: {currentProfile.code}</span>
-              )}
-            </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">MedXRescue Emergency Availability &amp; Shift Schedule</h2>
+            <p className="text-xs text-slate-500">Configure whether your hospital accepts automated Uber-style guest emergency matching and active hours.</p>
           </div>
         </div>
-      </section>
 
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <span className="text-xs font-black text-slate-700">Emergency SOS Matching</span>
+            <p className="text-[11px] text-slate-500">Allow guests to match with your hospital for emergency dispatches.</p>
+            <label className="flex items-center gap-2 pt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={emergencyAvailability.availableForEmergency}
+                onChange={e => setEmergencyAvailability(prev => ({ ...prev, availableForEmergency: e.target.checked }))}
+                className="h-4 w-4 rounded border-slate-300 text-[#1b7b68] focus:ring-[#1b7b68]"
+              />
+              <span className="text-xs font-extrabold text-slate-800">
+                {emergencyAvailability.availableForEmergency ? '🟢 Hospital is Available' : '🔴 Hospital is Offline'}
+              </span>
+            </label>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <span className="text-xs font-black text-slate-700">Availability Mode</span>
+            <p className="text-[11px] text-slate-500">Choose 24/7 or custom active shift hours.</p>
+            <select
+              value={emergencyAvailability.availabilityMode}
+              onChange={e => setEmergencyAvailability(prev => ({ ...prev, availabilityMode: e.target.value }))}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-[#1b7b68]"
+            >
+              <option value="24_7">24 Hours / 7 Days (Always Active)</option>
+              <option value="CUSTOM">Custom Shift Hours</option>
+            </select>
+          </div>
+
+          {emergencyAvailability.availabilityMode === 'CUSTOM' ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-2 sm:col-span-2 lg:col-span-1">
+              <span className="text-xs font-black text-slate-700">Active Shift Hours</span>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <label className="block text-[10px] font-bold text-slate-600">
+                  Start Time
+                  <input
+                    type="time"
+                    value={emergencyAvailability.customStartTime}
+                    onChange={e => setEmergencyAvailability(prev => ({ ...prev, customStartTime: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700"
+                  />
+                </label>
+                <label className="block text-[10px] font-bold text-slate-600">
+                  End Time
+                  <input
+                    type="time"
+                    value={emergencyAvailability.customEndTime}
+                    onChange={e => setEmergencyAvailability(prev => ({ ...prev, customEndTime: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700"
+                  />
+                </label>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+              <span className="text-xs font-black text-slate-700">Active Shift Hours</span>
+              <p className="text-xs font-extrabold text-[#1b7b68] mt-2">Active 24 Hours Daily (08:00 - 08:00 Standard Shift)</p>
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <span className="text-xs font-black text-slate-700">Resus Bays Available</span>
+            <input
+              type="number"
+              min="0"
+              max="50"
+              value={emergencyAvailability.resusBaysAvailable}
+              onChange={e => setEmergencyAvailability(prev => ({ ...prev, resusBaysAvailable: Number(e.target.value) }))}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <span className="text-xs font-black text-slate-700">ED Beds Available</span>
+            <input
+              type="number"
+              min="0"
+              max="200"
+              value={emergencyAvailability.edBedsAvailable}
+              onChange={e => setEmergencyAvailability(prev => ({ ...prev, edBedsAvailable: Number(e.target.value) }))}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <span className="text-xs font-black text-slate-700">Diversion Status</span>
+            <label className="flex items-center gap-2 pt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={emergencyAvailability.diversionStatus}
+                onChange={e => setEmergencyAvailability(prev => ({ ...prev, diversionStatus: e.target.checked }))}
+                className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+              />
+              <span className="text-xs font-extrabold text-slate-800">
+                {emergencyAvailability.diversionStatus ? '🚨 Diversion Active (Do Not Match)' : '🟢 Normal Operations'}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+          {availabilityMessage ? (
+            <p className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-700">
+              <CheckCircle2 className="h-4 w-4" />
+              {availabilityMessage}
+            </p>
+          ) : (
+            <span className="text-[11px] text-slate-400">Changes apply instantly to the smart guest matching algorithm.</span>
+          )}
+
+          <button
+            type="submit"
+            disabled={savingAvailability}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-5 py-2.5 text-xs font-black text-white hover:bg-[#166657] shadow transition disabled:opacity-60"
+          >
+            {savingAvailability ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save Emergency Availability
+          </button>
+        </div>
+      </form>
+
+      {/* Profile & Password Section */}
       <form onSubmit={saveProfile} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e8f5f3] text-[#1b7b68]">
