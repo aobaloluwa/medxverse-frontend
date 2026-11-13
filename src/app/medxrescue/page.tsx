@@ -473,7 +473,7 @@ export default function MedxRescueGuestPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-3xl bg-white p-6 sm:p-8 border border-teal-100/80 shadow-xl shadow-teal-950/5">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3.5 py-1 text-xs font-black uppercase tracking-wider text-[#1b7b68] border border-teal-200/60 mb-2">
-              <Siren size={15} className="text-[#1b7b68]" /> Uber-Style Smart Emergency Dispatch
+              <Siren size={15} className="text-[#1b7b68]" />Smart Emergency Dispatch
             </div>
             <h1 className="text-2xl font-black text-slate-900 sm:text-4xl tracking-tight">
               Order Emergency Assistance
