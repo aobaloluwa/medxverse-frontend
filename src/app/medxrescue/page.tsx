@@ -182,7 +182,7 @@ export default function MedxRescueGuestPage() {
     }
   }, [activeRef, activeToken, refreshStatus]);
 
-  // Auto GPS Location detector
+  // Auto GPS Location detector with high precision
   const locate = useCallback(() => {
     setError('');
     if (!navigator.geolocation) {
@@ -223,7 +223,7 @@ export default function MedxRescueGuestPage() {
         setLocationState('error');
         setError('GPS permission denied. Please enter a landmark or street address.');
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   }, []);
 
@@ -249,7 +249,7 @@ export default function MedxRescueGuestPage() {
     try {
       const res = await medxRescueService.previewSmartHospital(incidentId, exclude);
       setMatchedHospital({ matchedHospital: res.data.matchedHospital, distanceKm: res.data.distanceKm, estimatedEtaMinutes: res.data.estimatedEtaMinutes, acceptanceId: '' });
-      setNotice(`Suggested nearest hospital: ${res.data.matchedHospital.name} (${res.data.distanceKm} km away, ~${res.data.estimatedEtaMinutes}m ETA). Please confirm to dispatch.`);
+      setNotice(`Suggested nearest hospital: ${res.data.matchedHospital.name} (${res.data.distanceKm} km away, ~${res.data.estimatedEtaMinutes}m ETA). Please review and confirm.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not match with an available hospital.');
     } finally {
@@ -268,7 +268,7 @@ export default function MedxRescueGuestPage() {
       const res = await medxRescueService.matchSmartHospital(incidentId, excludedFacilityIds);
       setMatchedHospital(res.data);
       setHospitalConfirmed(true);
-      setNotice(`Hospital ${res.data.matchedHospital.name} confirmed! 20-minute hospital acceptance timer started.`);
+      setNotice(`Hospital ${res.data.matchedHospital.name} confirmed! Dispatched to hospital queue and 20-minute countdown started.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not confirm hospital match.');
     } finally {
@@ -345,9 +345,8 @@ export default function MedxRescueGuestPage() {
       setActiveToken(res.accessToken);
       setActiveIncident(incident);
       playEmergencyBeeper('SOS_ALERT', 2);
-      setNotice('Emergency SOS dispatched! Finding nearest available hospital...');
+      setNotice('Emergency SOS created! Finding nearest available hospital for your review...');
 
-      // Automatically run Uber-style smart hospital matching
       const incidentId = String(incident._id || incident.id || '');
       if (incidentId) {
         await runSmartHospitalMatch(incidentId);
@@ -421,7 +420,7 @@ export default function MedxRescueGuestPage() {
   const [timeRemainingSec, setTimeRemainingSec] = useState<number>(1200);
 
   useEffect(() => {
-    if (!activeIncident || activeIncident.crewConfirmed || isClosed) return;
+    if (!activeIncident || !hospitalConfirmed || activeIncident.crewConfirmed || isClosed) return;
     const remaining = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
     setTimeRemainingSec(remaining);
 
@@ -430,7 +429,7 @@ export default function MedxRescueGuestPage() {
       setTimeRemainingSec(rem);
     }, 1000);
     return () => clearInterval(interval);
-  }, [activeIncident, expiresAtMs, isClosed]);
+  }, [activeIncident, hospitalConfirmed, expiresAtMs, isClosed]);
 
   const formatTimer = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -439,27 +438,27 @@ export default function MedxRescueGuestPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5faf9] font-sans antialiased text-slate-800">
+    <div className="min-h-screen bg-gradient-to-b from-[#f0f7f6] via-[#f5faf9] to-[#eef6f5] font-sans antialiased text-slate-800">
       {/* Header */}
-      <header className="border-b border-teal-100 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1b7b68] text-white"><HeartPulse size={23}/></span>
-            <span><span className="block text-sm font-extrabold tracking-tight text-slate-900">MedXVerse</span><span className="block text-xs font-semibold text-[#1b7b68]">MedXRescue Nexus</span></span>
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/90 border-b border-teal-100 shadow-xs">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
+          <Link href="/" className="flex items-center gap-3 transition-transform hover:scale-102">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#125547] text-white shadow-md shadow-teal-900/10"><HeartPulse size={23}/></span>
+            <span><span className="block text-sm font-black tracking-tight text-slate-900">MedXVerse</span><span className="block text-xs font-bold text-[#1b7b68]">MedXRescue Nexus</span></span>
           </Link>
           <div className="flex items-center gap-3">
-            <Link href="/medxrescue/fleet" className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50/80 px-3.5 py-2 text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100">
+            <Link href="/medxrescue/fleet" className="inline-flex items-center gap-1.5 rounded-2xl border border-teal-200/80 bg-teal-50/90 px-4 py-2 text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 transition shadow-xs">
               <Siren size={15} /> Aerial Satellite Radar
             </Link>
-            <Link href="/auth/login" className="text-sm font-semibold text-slate-600 hover:text-[#1b7b68]">Staff sign in</Link>
+            <Link href="/auth/login" className="text-xs font-bold text-slate-600 hover:text-[#1b7b68] transition">Staff sign in</Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
         {/* Offline Banner */}
         {!isOnline && (
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 text-xs font-extrabold flex items-center gap-3">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 text-xs font-extrabold flex items-center gap-3 shadow-sm">
             <WifiOff size={18} className="text-amber-700 shrink-0" />
             <div>
               <p className="font-black text-amber-950">Offline Mode Active</p>
@@ -470,32 +469,32 @@ export default function MedxRescueGuestPage() {
           </div>
         )}
 
-        {/* Header Banner */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Hero Header Banner */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-3xl bg-white p-6 sm:p-8 border border-teal-100/80 shadow-xl shadow-teal-950/5">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#1b7b68]">
-              <Siren size={16} /> MedXVerse Emergency Rescue SOS (Uber-Style Guest Dispatch)
+            <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3.5 py-1 text-xs font-black uppercase tracking-wider text-[#1b7b68] border border-teal-200/60 mb-2">
+              <Siren size={15} className="text-[#1b7b68]" /> Uber-Style Smart Emergency Dispatch
             </div>
-            <h1 className="mt-1 text-2xl font-extrabold text-slate-900 sm:text-3xl">
+            <h1 className="text-2xl font-black text-slate-900 sm:text-4xl tracking-tight">
               Order Emergency Assistance
             </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Request an emergency ambulance instantly. Our smart algorithm matches you with the nearest available hospital based on location, distance, and 24/7 availability.
+            <p className="mt-1.5 text-sm text-slate-600 max-w-2xl leading-relaxed">
+              Request an emergency ambulance instantly. Our intelligent geospatial algorithm matches you with the nearest available hospital. You remain in full control and must confirm your hospital match before dispatch.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <button
               type="button"
               onClick={triggerEmergencyVoiceCall}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-black text-white hover:bg-[#166657] shadow-md transition"
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-4.5 py-3 text-xs font-black text-white hover:bg-[#166657] shadow-lg shadow-teal-900/25 transition-all hover:scale-102"
             >
-              <PhoneCall size={16} className="text-rose-300 animate-pulse" /> Emergency Voice Call to Hospital
+              <PhoneCall size={16} className="text-rose-300 animate-pulse" /> Emergency Voice Call
             </button>
 
             <a
               href="tel:112"
-              className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black text-white hover:bg-rose-700 shadow-md transition"
+              className="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-4.5 py-3 text-xs font-black text-white hover:bg-rose-700 shadow-lg shadow-rose-900/25 transition-all hover:scale-102"
             >
               <PhoneCall size={15} /> Direct 112 Call
             </a>
@@ -503,20 +502,20 @@ export default function MedxRescueGuestPage() {
         </div>
 
         {/* Main Grid Layout: Map & Tracking on One Side, SOS Intake Form on Other */}
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
 
           {/* Left Column: Live Satellite Map & Status Progress Tracker */}
           <div className="space-y-6">
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xl shadow-slate-200/50 space-y-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-teal-50 text-[#1b7b68]">
-                    <HeartPulse size={18} />
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-teal-50 text-[#1b7b68]">
+                    <HeartPulse size={19} />
                   </span>
                   <div>
-                    <h2 className="text-sm font-extrabold text-slate-900">Live Satellite Emergency Radar (Ogbomoso)</h2>
-                    <p className="text-[11px] text-slate-500">LAUTECH LTH, BUTH, General Hospital &amp; live ambulance tracking</p>
+                    <h2 className="text-sm font-black text-slate-900">Live Satellite Emergency Radar (Ogbomoso)</h2>
+                    <p className="text-[11px] text-slate-500">LAUTECH LTH, BUTH, General Hospital &amp; live ambulance fleet</p>
                   </div>
                 </div>
 
@@ -525,7 +524,7 @@ export default function MedxRescueGuestPage() {
                     type="button"
                     onClick={() => void refreshStatus()}
                     disabled={refreshing}
-                    className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-50 transition"
                   >
                     <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Sync
                   </button>
@@ -553,51 +552,46 @@ export default function MedxRescueGuestPage() {
               />
             </div>
 
-            {/* Uber-Style Smart Hospital Matching Display Card */}
-            {activeIncident && matchedHospital && (
-              <div className="rounded-3xl border-2 border-teal-400 bg-teal-50/70 p-6 shadow-md space-y-4">
-                <div className="flex items-center justify-between border-b border-teal-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1b7b68] text-white">
-                      <Building2 size={20} />
+            {/* Uber-Style Smart Hospital Matching Display Card (Shown BEFORE confirmation) */}
+            {activeIncident && matchedHospital && !hospitalConfirmed && (
+              <div className="rounded-3xl border-2 border-teal-400 bg-gradient-to-br from-teal-50/90 to-white p-6 shadow-2xl shadow-teal-900/10 space-y-4 animate-in fade-in duration-300">
+                <div className="flex items-center justify-between border-b border-teal-200/70 pb-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#1b7b68] text-white shadow-md">
+                      <Building2 size={22} />
                     </span>
                     <div>
                       <span className="text-[10px] font-black uppercase tracking-widest text-[#1b7b68]">
-                        Smart Hospital Match (Uber-Style)
+                        Suggested Nearest Hospital Match
                       </span>
-                      <h3 className="text-lg font-black text-slate-900">
+                      <h3 className="text-xl font-black text-slate-900">
                         {matchedHospital.matchedHospital.name}
                       </h3>
                     </div>
                   </div>
-                  <span className="rounded-xl bg-teal-200 px-3 py-1 text-xs font-black text-teal-900">
+                  <span className="rounded-2xl bg-teal-200/80 px-3.5 py-1.5 text-xs font-black text-teal-900 shadow-xs">
                     {matchedHospital.distanceKm} km away (~{matchedHospital.estimatedEtaMinutes} min ETA)
                   </span>
                 </div>
 
-                <div className="text-xs text-slate-700 space-y-1">
+                <div className="text-xs text-slate-700 space-y-1.5 bg-white/80 p-4 rounded-2xl border border-teal-100">
                   <p><strong>Address:</strong> {matchedHospital.matchedHospital.address}</p>
                   <p><strong>Emergency Contact:</strong> {matchedHospital.matchedHospital.emergencyContactPhone}</p>
                   {matchedHospital.matchedHospital.capabilities?.length > 0 && (
                     <p><strong>Capabilities:</strong> {matchedHospital.matchedHospital.capabilities.join(', ')}</p>
                   )}
+                  <p className="text-[11px] text-amber-800 font-bold pt-1">⚠️ This request is currently PENDING. No hospital or countdown timer has started until you explicitly confirm below.</p>
                 </div>
 
                 <div className="flex flex-wrap gap-3 pt-2">
-                  {!hospitalConfirmed ? (
-                    <button
-                      type="button"
-                      disabled={matchingHospital}
-                      onClick={() => void confirmHospitalMatch()}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-3 text-xs font-black text-white hover:bg-[#166657] shadow disabled:opacity-60"
-                    >
-                      <Check size={16} /> {matchingHospital ? 'Confirming...' : 'Confirm Hospital Match'}
-                    </button>
-                  ) : (
-                    <div className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white text-center flex items-center justify-center gap-2">
-                      <CheckCircle2 size={16} /> Hospital Match Confirmed &amp; Notified!
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    disabled={matchingHospital}
+                    onClick={() => void confirmHospitalMatch()}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1b7b68] px-5 py-3.5 text-xs font-black text-white hover:bg-[#166657] shadow-xl shadow-teal-900/20 transition-all hover:scale-102 disabled:opacity-60"
+                  >
+                    <Check size={16} /> {matchingHospital ? 'Confirming Dispatch…' : 'Confirm Hospital Match & Dispatch'}
+                  </button>
 
                   <button
                     type="button"
@@ -611,16 +605,17 @@ export default function MedxRescueGuestPage() {
                         void runSmartHospitalMatch(incidentId, newExcluded);
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-teal-300 bg-white px-4 py-3 text-xs font-black text-[#1b7b68] hover:bg-teal-50"
+                    className="inline-flex items-center gap-1.5 rounded-2xl border border-teal-300 bg-white px-4.5 py-3.5 text-xs font-black text-[#1b7b68] hover:bg-teal-50 transition shadow-xs"
                   >
-                    <RefreshCcw size={14} className={matchingHospital ? 'animate-spin' : ''} /> Find Alternative Hospital
+                    <RefreshCcw size={14} className={matchingHospital ? 'animate-spin' : ''} /> Decline / Find Alternative
                   </button>
                 </div>
               </div>
             )}
 
+            {/* Active SOS Tracking Timeline (Shown ONLY AFTER hospital match confirmation) */}
             {activeIncident && hospitalConfirmed && (
-              <div className="rounded-3xl border border-teal-200 bg-white p-6 shadow-sm space-y-5">
+              <div className="rounded-3xl border border-teal-200 bg-white p-6 shadow-xl shadow-slate-200/50 space-y-5 animate-in fade-in duration-300">
                 <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#1b7b68]">
@@ -632,7 +627,7 @@ export default function MedxRescueGuestPage() {
                     <p className="text-xs text-slate-500 mt-0.5">{activeIncident.chiefComplaint}</p>
                   </div>
 
-                  <span className={`rounded-full px-3 py-1 text-xs font-extrabold uppercase ${
+                  <span className={`rounded-full px-3.5 py-1 text-xs font-black uppercase ${
                     currentStatus === 'NO_RESOURCE_AVAILABLE' ? 'bg-rose-100 text-rose-800 border border-rose-200' : isClosed ? 'bg-slate-100 text-slate-700' : 'bg-teal-50 text-[#1b7b68] border border-teal-200'
                   }`}>
                     {activeIncident.status.replaceAll('_', ' ')}
@@ -640,16 +635,16 @@ export default function MedxRescueGuestPage() {
                 </div>
 
                 {!activeIncident.crewConfirmed && !isClosed && (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 space-y-1">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-1.5 shadow-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
                         <Clock3 size={15} className="text-amber-700" /> Hospital Acceptance Timeout
                       </span>
-                      <span className="rounded-lg bg-amber-200 px-2 py-0.5 text-xs font-black text-amber-900 tabular-nums">
+                      <span className="rounded-xl bg-amber-200 px-2.5 py-0.5 text-xs font-black text-amber-900 tabular-nums">
                         {formatTimer(timeRemainingSec)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-amber-800 leading-normal">
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
                       Requests automatically expire if no hospital or ambulance confirms within 20 minutes.
                     </p>
                   </div>
@@ -747,14 +742,14 @@ export default function MedxRescueGuestPage() {
 
           {/* Right Column: SOS Order Intake Form */}
           <div className="space-y-6">
-            <form onSubmit={submitEmergency} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
-              <div className="border-b border-slate-100 pb-4 text-center">
+            <form onSubmit={submitEmergency} className="rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xl shadow-slate-200/50 space-y-6">
+              <div className="border-b border-slate-100 pb-5 text-center">
                 <span className="text-xs font-black uppercase tracking-widest text-rose-600">
                   Guest Emergency Dispatch
                 </span>
-                <h2 className="text-xl font-bold text-slate-900 mt-1">Request Ambulance Help</h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Fill in your details below, then press the big round SOS button to dispatch instantly.
+                <h2 className="text-2xl font-black text-slate-900 mt-1">Request Ambulance Help</h2>
+                <p className="text-xs text-slate-500 mt-1.5">
+                  Fill in your details below, then press the big round SOS button to initiate an uncommitted pending request.
                 </p>
 
                 {/* Big Round Glowing Emergency SOS Button (Uber Style) */}
@@ -762,31 +757,31 @@ export default function MedxRescueGuestPage() {
                   <button
                     type="submit"
                     disabled={submitting || (Boolean(activeIncident) && !isClosed)}
-                    className="group relative flex h-40 w-40 flex-col items-center justify-center rounded-full bg-gradient-to-br from-rose-600 to-rose-700 p-4 text-white shadow-2xl transition-all duration-300 hover:scale-105 hover:from-rose-500 hover:to-rose-600 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-8 border-rose-200/80 animate-pulse"
+                    className="group relative flex h-44 w-44 flex-col items-center justify-center rounded-full bg-gradient-to-br from-rose-600 via-rose-600 to-rose-700 p-4 text-white shadow-2xl shadow-rose-900/30 transition-all duration-300 hover:scale-105 hover:from-rose-500 hover:to-rose-600 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-8 border-rose-100 animate-pulse"
                   >
-                    <Siren size={38} className="transition-transform duration-300 group-hover:rotate-12" />
+                    <Siren size={42} className="transition-transform duration-300 group-hover:rotate-12" />
                     <span className="mt-1 text-lg font-black tracking-widest">EMERGENCY</span>
-                    <span className="text-xs font-bold uppercase tracking-wider text-rose-100">SOS DISPATCH</span>
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-rose-100">SOS DISPATCH</span>
                   </button>
-                  <p className="mt-3 text-[11px] font-bold text-slate-500">Tap to instantly alert hospital dispatch &amp; match nearest hospital</p>
+                  <p className="mt-3.5 text-xs font-bold text-slate-500">Tap to preview nearest hospital &amp; confirm dispatch</p>
                 </div>
               </div>
 
-              {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">{error}</div>}
-              {notice && <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-xs font-semibold text-[#1b7b68]">{notice}</div>}
+              {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800 shadow-xs">{error}</div>}
+              {notice && <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-xs font-semibold text-[#1b7b68] shadow-xs">{notice}</div>}
 
               {/* Location & Landmark Section (REQUIRED) */}
-              <div className="rounded-2xl border-2 border-teal-500/40 bg-teal-50/50 p-4 space-y-3">
+              <div className="rounded-2xl border-2 border-teal-500/40 bg-teal-50/40 p-5 space-y-3.5 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin size={16} className="text-[#1b7b68]" />
+                  <div className="flex items-center gap-2">
+                    <MapPin size={17} className="text-[#1b7b68]" />
                     <span className="text-xs font-black text-slate-900">Emergency Location <span className="text-rose-600">*</span></span>
                   </div>
                   <button
                     type="button"
                     onClick={locate}
                     disabled={locationState === 'loading'}
-                    className="inline-flex items-center gap-1 rounded-xl border border-teal-300 bg-white px-3 py-1.5 text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 shadow-sm"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-teal-300 bg-white px-3.5 py-2 text-xs font-extrabold text-[#1b7b68] hover:bg-teal-50 shadow-xs transition"
                   >
                     <Crosshair size={13} /> {locationState === 'loading' ? 'Detecting GPS…' : 'Re-Detect GPS'}
                   </button>
@@ -799,8 +794,8 @@ export default function MedxRescueGuestPage() {
                 )}
 
                 {hasCoordinates && (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800 flex items-center justify-between">
-                    <span className="font-extrabold flex items-center gap-1">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 flex items-center justify-between shadow-xs">
+                    <span className="font-black flex items-center gap-1.5">
                       ✓ GPS Location Auto-Captured ({Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)})
                     </span>
                     <span className="text-[10px] font-bold opacity-80">±{accuracy ? Math.round(accuracy) : 10}m</span>
@@ -809,7 +804,7 @@ export default function MedxRescueGuestPage() {
 
                 {/* Ogbomoso Quick-Select Location Presets */}
                 <div className="pt-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Ogbomoso Quick-Select Location Presets:</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Ogbomoso Quick-Select Location Presets:</p>
                   <div className="flex flex-wrap gap-1.5">
                     {[
                       { name: 'LAUTECH Teaching Hospital', lat: 8.1432, lng: 4.2558 },
@@ -829,7 +824,7 @@ export default function MedxRescueGuestPage() {
                           setLocationDescription(`${loc.name}, Ogbomoso, Oyo State, Nigeria`);
                           setLocationState('success');
                         }}
-                        className="rounded-lg border border-teal-200 bg-white px-2.5 py-1 text-[10px] font-extrabold text-[#1b7b68] hover:bg-teal-50 shadow-xs"
+                        className="rounded-xl border border-teal-200 bg-white px-3 py-1.5 text-[11px] font-extrabold text-[#1b7b68] hover:bg-teal-50 shadow-xs transition"
                       >
                         📍 {loc.name}
                       </button>
@@ -838,7 +833,7 @@ export default function MedxRescueGuestPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     Landmark / Street Address {!hasCoordinates && <span className="text-rose-600">*</span>}
                   </label>
                   <input
@@ -847,7 +842,7 @@ export default function MedxRescueGuestPage() {
                     value={landmark}
                     onChange={e => setLandmark(e.target.value)}
                     placeholder="e.g. Opposite LAUTECH Main Gate, Takie, Ogbomoso"
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-medium text-slate-800 outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100"
                   />
                 </div>
               </div>
@@ -855,44 +850,44 @@ export default function MedxRescueGuestPage() {
               {/* Caller & Contact Information */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700">Your Name (Optional)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Your Name (Optional)</label>
                   <input
                     type="text"
                     value={callerName}
                     onChange={e => setCallerName(e.target.value)}
                     placeholder="e.g. Guest Caller"
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-xs font-medium text-slate-800 outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700">Callback Phone <span className="text-rose-600">*</span></label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Callback Phone <span className="text-rose-600">*</span></label>
                   <input
                     type="tel"
                     required
                     value={callerPhone}
                     onChange={e => setCallerPhone(e.target.value)}
                     placeholder="e.g. +234 801 234 5678"
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-xs font-medium text-slate-800 outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100"
                   />
                 </div>
               </div>
 
               {/* Patient Option */}
               <div>
-                <label className="block text-xs font-bold text-slate-700">Who Needs Help?</label>
-                <div className="mt-1.5 grid grid-cols-2 gap-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Who Needs Help?</label>
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setCallerIsPatient(true)}
-                    className={`rounded-xl border py-2.5 text-xs font-bold transition ${callerIsPatient ? 'border-[#1b7b68] bg-teal-50 text-[#1b7b68]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    className={`rounded-xl border py-3 text-xs font-black transition ${callerIsPatient ? 'border-[#1b7b68] bg-teal-50 text-[#1b7b68] shadow-xs' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                   >
                     Myself
                   </button>
                   <button
                     type="button"
                     onClick={() => setCallerIsPatient(false)}
-                    className={`rounded-xl border py-2.5 text-xs font-bold transition ${!callerIsPatient ? 'border-[#1b7b68] bg-teal-50 text-[#1b7b68]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    className={`rounded-xl border py-3 text-xs font-black transition ${!callerIsPatient ? 'border-[#1b7b68] bg-teal-50 text-[#1b7b68] shadow-xs' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                   >
                     Someone Else
                   </button>
@@ -901,19 +896,19 @@ export default function MedxRescueGuestPage() {
 
               {/* Emergency Description */}
               <div>
-                <label className="block text-xs font-bold text-slate-700">What is the Emergency? <span className="text-rose-600">*</span></label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">What is the Emergency? <span className="text-rose-600">*</span></label>
                 <textarea
                   required
                   rows={3}
                   value={chiefComplaint}
                   onChange={e => setChiefComplaint(e.target.value)}
                   placeholder="Briefly describe symptoms (e.g. Severe breathing difficulty, accident)"
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none focus:border-[#1b7b68]"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-xs font-medium text-slate-800 outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-teal-100"
                 />
               </div>
 
               {/* Quick Triage Safety Questions */}
-              <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4 space-y-3">
+              <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4 space-y-3 shadow-xs">
                 <div className="flex items-center gap-2">
                   <Activity size={16} className="text-rose-600" />
                   <span className="text-xs font-black text-slate-900">Quick Triage Check</span>
@@ -925,17 +920,17 @@ export default function MedxRescueGuestPage() {
                     { id: 'not_breathing', q: 'Is the person struggling to breathe?' },
                     { id: 'severe_bleeding', q: 'Is there severe bleeding?' },
                   ].map(item => (
-                    <div key={item.id} className="flex items-center justify-between rounded-xl bg-white p-2.5 border border-slate-200">
+                    <div key={item.id} className="flex items-center justify-between rounded-xl bg-white p-3 border border-slate-200/80 shadow-xs">
                       <span className="text-xs font-bold text-slate-700">{item.q}</span>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1.5">
                         {['YES', 'NO'].map(ans => (
                           <button
                             key={ans}
                             type="button"
                             onClick={() => setTriageAnswers(prev => ({ ...prev, [item.id]: prev[item.id] === ans ? '' : ans }))}
-                            className={`rounded-lg px-2.5 py-1 text-[10px] font-black ${
+                            className={`rounded-xl px-3 py-1.5 text-[11px] font-black transition ${
                               triageAnswers[item.id] === ans
-                                ? ans === 'YES' ? 'bg-rose-600 text-white' : 'bg-[#1b7b68] text-white'
+                                ? ans === 'YES' ? 'bg-rose-600 text-white shadow-xs' : 'bg-[#1b7b68] text-white shadow-xs'
                                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                             }`}
                           >
@@ -952,8 +947,8 @@ export default function MedxRescueGuestPage() {
         </div>
       </main>
 
-      <footer className="border-t border-teal-100 bg-white px-4 py-5 text-center text-xs text-slate-500 mt-12">
-        MedXRescue Nexus · Uber-Style Smart Hospital Matching Engine.
+      <footer className="border-t border-teal-100 bg-white px-4 py-6 text-center text-xs text-slate-500 mt-16 shadow-inner">
+        MedXRescue Nexus · Uber-Style Smart Hospital Matching Engine with Explicit Patient Confirmation.
       </footer>
     </div>
   );
