@@ -441,21 +441,21 @@ export default function MedxRescueGuestPage() {
     <div className="min-h-screen bg-gradient-to-b from-[#f0f7f6] via-[#f5faf9] to-[#eef6f5] font-sans antialiased text-slate-800">
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-white/90 border-b border-teal-100 shadow-xs">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3 transition-transform hover:scale-102">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#125547] text-white shadow-md shadow-teal-900/10"><HeartPulse size={23}/></span>
-            <span><span className="block text-sm font-black tracking-tight text-slate-900">MedXVerse</span><span className="block text-xs font-bold text-[#1b7b68]">MedXRescue Nexus</span></span>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-6 lg:px-8">
+          <Link href="/" className="flex items-center gap-2.5 transition-transform hover:scale-102">
+            <span className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#125547] text-white shadow-md shadow-teal-900/10"><HeartPulse size={21}/></span>
+            <span><span className="block text-xs sm:text-sm font-black tracking-tight text-slate-900">MedXVerse</span><span className="block text-[10px] sm:text-xs font-bold text-[#1b7b68]">MedXRescue Nexus</span></span>
           </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/medxrescue/fleet" className="inline-flex items-center gap-1.5 rounded-2xl border border-teal-200/80 bg-teal-50/90 px-4 py-2 text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 transition shadow-xs">
-              <Siren size={15} /> Aerial Satellite Radar
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/medxrescue/fleet" className="inline-flex items-center gap-1 rounded-xl sm:rounded-2xl border border-teal-200/80 bg-teal-50/90 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 transition shadow-xs">
+              <Siren size={14} /> <span className="hidden xs:inline">Aerial </span>Radar
             </Link>
-            <Link href="/auth/login" className="text-xs font-bold text-slate-600 hover:text-[#1b7b68] transition">Staff sign in</Link>
+            <Link href="/auth/login" className="text-[11px] sm:text-xs font-bold text-slate-600 hover:text-[#1b7b68] transition">Sign in</Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+      <main className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-6 sm:space-y-8">
         {/* Offline Banner */}
         {!isOnline && (
           <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 text-xs font-extrabold flex items-center gap-3 shadow-sm">
@@ -548,7 +548,7 @@ export default function MedxRescueGuestPage() {
                 }
                 facilities={liveFleet?.facilities || []}
                 selectedIncidentId={activeIncident?.id || activeIncident?._id}
-                heightClass="h-[480px]"
+                heightClass="h-[320px] sm:h-[400px] lg:h-[480px]"
               />
             </div>
 
