@@ -447,8 +447,8 @@ export default function MedxRescueGuestPage() {
             <span><span className="block text-xs sm:text-sm font-black tracking-tight text-slate-900">MedXVerse</span><span className="block text-[10px] sm:text-xs font-bold text-[#1b7b68]">MedXRescue Nexus</span></span>
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
-            <Link href="/medxrescue/fleet" className="inline-flex items-center gap-1 rounded-xl sm:rounded-2xl border border-teal-200/80 bg-teal-50/90 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 transition shadow-xs">
-              <Siren size={14} /> <span className="hidden xs:inline">Aerial </span>Radar
+            <Link href="/medxrescue/providers" className="inline-flex items-center gap-1 rounded-xl sm:rounded-2xl border border-teal-200/80 bg-teal-50/90 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 transition shadow-xs">
+              <Ambulance size={14} /> Register Ambulance
             </Link>
             <Link href="/portal/login" className="text-[11px] sm:text-xs font-bold text-slate-600 hover:text-[#1b7b68] transition">Sign in</Link>
           </div>
