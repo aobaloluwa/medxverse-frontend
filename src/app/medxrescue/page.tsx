@@ -440,7 +440,7 @@ export default function MedxRescueGuestPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#f0f7f6] via-[#f5faf9] to-[#eef6f5] font-sans antialiased text-slate-800">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/90 border-b border-teal-100 shadow-xs">
+      <header className="sticky top-0 z-[9999] backdrop-blur-md bg-white/95 border-b border-teal-100 shadow-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-2.5 transition-transform hover:scale-102">
             <span className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#125547] text-white shadow-md shadow-teal-900/10"><HeartPulse size={21}/></span>
@@ -450,7 +450,7 @@ export default function MedxRescueGuestPage() {
             <Link href="/medxrescue/fleet" className="inline-flex items-center gap-1 rounded-xl sm:rounded-2xl border border-teal-200/80 bg-teal-50/90 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-extrabold text-[#1b7b68] hover:bg-teal-100 transition shadow-xs">
               <Siren size={14} /> <span className="hidden xs:inline">Aerial </span>Radar
             </Link>
-            <Link href="/auth/login" className="text-[11px] sm:text-xs font-bold text-slate-600 hover:text-[#1b7b68] transition">Sign in</Link>
+            <Link href="/portal/login" className="text-[11px] sm:text-xs font-bold text-slate-600 hover:text-[#1b7b68] transition">Sign in</Link>
           </div>
         </div>
       </header>
@@ -514,8 +514,8 @@ export default function MedxRescueGuestPage() {
                     <HeartPulse size={19} />
                   </span>
                   <div>
-                    <h2 className="text-sm font-black text-slate-900">Live Satellite Emergency Radar (Ogbomoso)</h2>
-                    <p className="text-[11px] text-slate-500">LAUTECH LTH, BUTH, General Hospital &amp; live ambulance fleet</p>
+                    <h2 className="text-sm font-black text-slate-900">Live Satellite Emergency Radar (Real-Time GPS)</h2>
+                    <p className="text-[11px] text-slate-500">Live user GPS, partner hospitals &amp; active ambulance fleet</p>
                   </div>
                 </div>
 
