@@ -339,33 +339,33 @@ export default function FrontDeskPage() {
   return (
     <div className="space-y-6 pb-12">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-[#1b7b68] to-[#145e50] rounded-2xl p-6 text-white shadow-lg">
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-teal-200 text-xs font-semibold uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-[#1b7b68] text-xs font-semibold uppercase tracking-wider mb-1">
               <Building className="w-4 h-4" /> Hospital Management System
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Front Desk & Patient Access Hub</h1>
-            <p className="text-teal-100 text-sm mt-1">
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Front Desk & Patient Access Hub</h1>
+            <p className="text-slate-500 text-xs mt-1">
               Centralized desk for patient registration, triage scoring, queue tokens, admissions, referrals, and digital visitor passes.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowRegModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-[#1b7b68] rounded-xl font-bold text-xs hover:bg-teal-50 transition shadow-md"
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#1b7b68] text-white rounded-xl font-bold text-xs hover:bg-[#145e50] transition shadow-sm"
             >
               <UserPlus className="w-4 h-4" /> Register Walk-in
             </button>
             <button
               onClick={() => setShowQueueModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-teal-600/60 border border-teal-400/40 text-white rounded-xl font-bold text-xs hover:bg-teal-600 transition shadow-sm"
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs hover:bg-slate-200 transition shadow-sm"
             >
-              <ListOrdered className="w-4 h-4" /> Issue Token
+              <ListOrdered className="w-4 h-4 text-slate-600" /> Issue Token
             </button>
             <button
               onClick={fetchInitialData}
-              className="p-2.5 bg-teal-600/40 hover:bg-teal-600/60 text-white rounded-xl transition"
+              className="p-2.5 bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 rounded-xl transition"
               title="Refresh"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />

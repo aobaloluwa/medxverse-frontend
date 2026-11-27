@@ -358,27 +358,27 @@ export default function ClinicalSpecialtiesPage() {
   return (
     <div className="space-y-6 pb-12">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-teal-800 via-[#1b7b68] to-slate-800 rounded-2xl p-6 text-white shadow-lg">
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-teal-200 text-xs font-semibold uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-[#1b7b68] text-xs font-semibold uppercase tracking-wider mb-1">
               <Building className="w-4 h-4" /> Comprehensive Clinical Care
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Clinical Specialties & Outpatient Clinics</h1>
-            <p className="text-teal-100 text-sm mt-1 max-w-2xl">
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Clinical Specialties & Outpatient Clinics</h1>
+            <p className="text-slate-500 text-xs mt-1 max-w-2xl">
               Unified multi-specialty clinical system supporting 19 clinical departments, specialty-tailored assessments, and procedure logs.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-[#1b7b68] rounded-xl font-bold text-xs hover:bg-teal-50 transition shadow-md"
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#1b7b68] text-white rounded-xl font-bold text-xs hover:bg-[#145e50] transition shadow-sm"
             >
               <Plus className="w-4 h-4" /> New Consultation
             </button>
             <button
               onClick={fetchData}
-              className="p-2.5 bg-teal-700/60 hover:bg-teal-700 text-white rounded-xl transition"
+              className="p-2.5 bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 rounded-xl transition"
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
