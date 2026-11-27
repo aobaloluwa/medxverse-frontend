@@ -59,6 +59,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
+      label: 'Maternal & Child Health',
+      href: '/hms/mch',
+      icon: Baby,
+    },
+
+    {
       label: 'Patients EMR',
       href: '/hms/patients',
       icon: Users,
