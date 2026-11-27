@@ -25,6 +25,7 @@ import {
   BadgeDollarSign,
   ClipboardList,
   Ambulance,
+  UserCheck,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -42,6 +43,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'Hospital Overview',
       href: '/hms',
       icon: Building2,
+    },
+
+    {
+      label: 'Front Desk & Access',
+      href: '/hms/front-desk',
+      icon: UserCheck,
     },
 
     {
