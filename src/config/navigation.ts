@@ -28,6 +28,7 @@ import {
   UserCheck,
   BriefcaseMedical,
   Microscope,
+  Boxes,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -75,6 +76,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'Diagnostics & Support',
       href: '/hms/diagnostics-support',
       icon: Microscope,
+    },
+
+    {
+      label: 'Supply Chain & Facilities',
+      href: '/hms/supply-chain',
+      icon: Boxes,
     },
 
     {
