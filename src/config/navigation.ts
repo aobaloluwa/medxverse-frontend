@@ -30,6 +30,7 @@ import {
   Microscope,
   Boxes,
   GraduationCap,
+  Scale,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -89,6 +90,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'Human Resources',
       href: '/hms/hr',
       icon: GraduationCap,
+    },
+
+    {
+      label: 'Quality & Compliance',
+      href: '/hms/quality-compliance',
+      icon: Scale,
     },
 
     {
