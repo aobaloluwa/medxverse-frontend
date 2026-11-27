@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { FinanceService } from '@/services/finance.service';
 import { PatientApiService } from '@/services/patient.service';
+import { StaffApiService } from '@/services/staff.service';
 
 export default function BillingFinancePage() {
   const [activeTab, setActiveTab] = useState<
@@ -56,6 +57,7 @@ export default function BillingFinancePage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [payrolls, setPayrolls] = useState<any[]>([]);
   const [waivers, setWaivers] = useState<any[]>([]);
+  const [staffList, setStaffList] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals
@@ -77,8 +79,8 @@ export default function BillingFinancePage() {
   const [payrollForm, setPayrollForm] = useState({
     monthYear: new Date().toISOString().slice(0, 7),
     staffId: '',
-    staffName: 'Dr. John Doe',
-    designation: 'Senior Consultant Physician',
+    staffName: '',
+    designation: '',
     baseSalary: 450000,
     hazardAllowance: 50000,
     callDutyAllowance: 30000,
@@ -102,12 +104,13 @@ export default function BillingFinancePage() {
     setLoading(true);
     setError(null);
     try {
-      const [sumRes, expRes, payRes, waivRes, ptsRes] = await Promise.all([
+      const [sumRes, expRes, payRes, waivRes, ptsRes, staffRes] = await Promise.all([
         FinanceService.getFinanceSummary().catch(() => ({ data: {} })),
         FinanceService.getExpenses().catch(() => ({ data: [] })),
         FinanceService.getPayroll().catch(() => ({ data: [] })),
         FinanceService.getWaivers().catch(() => ({ data: [] })),
         PatientApiService.getPatients({ limit: 50 }).catch(() => ({ patients: [] })),
+        StaffApiService.getStaff({}).catch(() => ({ data: [] })),
       ]);
 
       setFinanceSummary({
@@ -128,6 +131,7 @@ export default function BillingFinancePage() {
       setPayrolls(payRes.data || []);
       setWaivers(waivRes.data || []);
       setPatients(ptsRes.patients || []);
+      setStaffList(staffRes.data || []);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch finance records.');
     } finally {
@@ -715,25 +719,55 @@ export default function BillingFinancePage() {
               </button>
             </div>
             <form onSubmit={handleCreatePayroll} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-600 mb-1">Select Staff Member</label>
+                <select
+                  required
+                  value={payrollForm.staffId}
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    const selectedStaff = staffList.find((s: any) => (s._id || s.id) === selectedId);
+                    if (selectedStaff) {
+                      setPayrollForm({
+                        ...payrollForm,
+                        staffId: selectedId,
+                        staffName: `${selectedStaff.firstName || ''} ${selectedStaff.lastName || ''}`.trim() || 'Staff Member',
+                        designation: selectedStaff.role || selectedStaff.classification || selectedStaff.department || 'Healthcare Professional',
+                      });
+                    } else {
+                      setPayrollForm({ ...payrollForm, staffId: selectedId });
+                    }
+                  }}
+                  className="w-full p-2 border border-slate-200 rounded-xl outline-none bg-white font-medium"
+                >
+                  <option value="">-- Choose Staff Member --</option>
+                  {staffList.map((s: any) => (
+                    <option key={s._id || s.id} value={s._id || s.id}>
+                      {s.firstName} {s.lastName} ({s.role || s.department || 'Staff'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">Staff Name</label>
+                  <label className="block font-semibold text-slate-600 mb-1">Selected Staff Name</label>
                   <input
                     type="text"
                     required
-                    value={payrollForm.staffName}
-                    onChange={(e) => setPayrollForm({ ...payrollForm, staffName: e.target.value })}
-                    className="w-full p-2 border border-slate-200 rounded-xl outline-none"
+                    readOnly
+                    value={payrollForm.staffName || 'Select a staff member above'}
+                    className="w-full p-2 border border-slate-200 bg-slate-50 rounded-xl outline-none font-bold text-slate-800"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">Designation</label>
+                  <label className="block font-semibold text-slate-600 mb-1">Designation / Role</label>
                   <input
                     type="text"
                     required
                     value={payrollForm.designation}
                     onChange={(e) => setPayrollForm({ ...payrollForm, designation: e.target.value })}
-                    className="w-full p-2 border border-slate-200 rounded-xl outline-none"
+                    className="w-full p-2 border border-slate-200 rounded-xl outline-none font-medium"
                   />
                 </div>
               </div>
