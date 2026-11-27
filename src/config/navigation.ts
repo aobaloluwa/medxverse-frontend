@@ -65,6 +65,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
+      label: 'Nursing & Inpatient Care',
+      href: '/hms/nursing',
+      icon: HeartPulse,
+    },
+
+    {
       label: 'Patients EMR',
       href: '/hms/patients',
       icon: Users,
