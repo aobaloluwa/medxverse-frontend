@@ -29,6 +29,7 @@ import {
   BriefcaseMedical,
   Microscope,
   Boxes,
+  GraduationCap,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -82,6 +83,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'Supply Chain & Facilities',
       href: '/hms/supply-chain',
       icon: Boxes,
+    },
+
+    {
+      label: 'Human Resources',
+      href: '/hms/hr',
+      icon: GraduationCap,
     },
 
     {
