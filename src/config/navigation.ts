@@ -32,6 +32,7 @@ import {
   GraduationCap,
   Scale,
   Cpu,
+  MessageSquare,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -64,9 +65,15 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
-      label: 'Maternal & Child Health',
+      label: 'Pediatrics, NICU & MCH',
       href: '/hms/mch',
       icon: Baby,
+    },
+
+    {
+      label: 'Rehabilitation & Allied Health',
+      href: '/hms/clinical-specialties',
+      icon: HeartPulse,
     },
 
     {
@@ -100,7 +107,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
-      label: 'Reports & System',
+      label: 'Communication & Messaging',
+      href: '/staff/messages',
+      icon: MessageSquare,
+    },
+
+    {
+      label: 'Reports & System Architecture',
       href: '/hms/reports-system',
       icon: Cpu,
     },
