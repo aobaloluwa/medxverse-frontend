@@ -27,6 +27,7 @@ import {
   Ambulance,
   UserCheck,
   BriefcaseMedical,
+  Microscope,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -68,6 +69,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'Nursing & Inpatient Care',
       href: '/hms/nursing',
       icon: HeartPulse,
+    },
+
+    {
+      label: 'Diagnostics & Support',
+      href: '/hms/diagnostics-support',
+      icon: Microscope,
     },
 
     {
