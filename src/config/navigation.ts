@@ -26,6 +26,7 @@ import {
   ClipboardList,
   Ambulance,
   UserCheck,
+  BriefcaseMedical,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -49,6 +50,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'Front Desk & Access',
       href: '/hms/front-desk',
       icon: UserCheck,
+    },
+
+    {
+      label: 'Clinical Specialties',
+      href: '/hms/clinical-specialties',
+      icon: BriefcaseMedical,
     },
 
     {
