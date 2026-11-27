@@ -31,6 +31,7 @@ import {
   Boxes,
   GraduationCap,
   Scale,
+  Cpu,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -96,6 +97,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'Quality & Compliance',
       href: '/hms/quality-compliance',
       icon: Scale,
+    },
+
+    {
+      label: 'Reports & System',
+      href: '/hms/reports-system',
+      icon: Cpu,
     },
 
     {
